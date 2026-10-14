@@ -1,0 +1,30 @@
+#!/sbin/openrc-run
+# OpenRC service for mcp-server-misterfpga (Streamable HTTP), e.g. in an Alpine LXC.
+# Installed as /etc/init.d/mcp-server-misterfpga by install.sh. HTTP settings live in
+# /etc/mcp-server-misterfpga/env; config.json and the SSH key the server logs in to the
+# MiSTers with live in /var/lib/mcp-server-misterfpga (the service user's own, 0700).
+
+name="mcp-server-misterfpga"
+description="MCP server for MiSTer FPGA devices, over Streamable HTTP"
+
+# supervise-daemon restarts the server if it exits (respawn_* below).
+supervisor="supervise-daemon"
+# run.sh loads /etc/mcp-server-misterfpga/env, then execs `mcp-server-misterfpga serve --http`.
+command="/opt/mcp-server-misterfpga/run.sh"
+command_user="mcp-mister:mcp-mister"
+directory="/var/lib/mcp-server-misterfpga"
+output_log="/var/log/mcp-server-misterfpga/server.log"
+error_log="/var/log/mcp-server-misterfpga/server.log"
+respawn_delay=5
+respawn_max=10
+respawn_period=300
+
+depend() {
+	need net
+	after firewall
+}
+
+start_pre() {
+	checkpath --directory --mode 0750 --owner mcp-mister:mcp-mister /var/log/mcp-server-misterfpga
+	checkpath --directory --mode 0700 --owner mcp-mister:mcp-mister /var/lib/mcp-server-misterfpga
+}

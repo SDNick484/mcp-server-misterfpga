@@ -1,0 +1,6 @@
+# Which mcp-server-shared commit this repo's shared files come from, and this
+# repo's package name (it replaces __PKG__). Written by
+# `python scripts/sync_shared.py --update`; see that script.
+repo = "SDNick484/mcp-server-shared"
+commit = "fcc5e04f47d7f8c6dda753d59ff500fb5ef86a89"
+package = "misterfpga_mcp"

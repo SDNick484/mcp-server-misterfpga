@@ -1,0 +1,116 @@
+{
+ "name": "Family Room",
+ "model": "SuperStation One",
+ "systems": [
+  {
+   "id": "SNES",
+   "name": "Super Nintendo Entertainment System",
+   "category": "Console",
+   "categories": [
+    "Console"
+   ]
+  },
+  {
+   "id": "Genesis",
+   "name": "Sega Genesis",
+   "category": "Console",
+   "categories": [
+    "Console"
+   ]
+  }
+ ],
+ "launchers": [
+  {
+   "id": "SNES",
+   "systemId": "SNES",
+   "systemName": "Super Nintendo Entertainment System",
+   "available": true,
+   "default": true,
+   "backend": "mister_core",
+   "misterCore": {
+    "name": "SNES",
+    "file": "SNES_20260901.rbf",
+    "mglPath": "_Console/SNES"
+   }
+  },
+  {
+   "id": "Genesis",
+   "systemId": "Genesis",
+   "systemName": "Sega Genesis",
+   "available": true,
+   "default": true,
+   "backend": "mister_core",
+   "misterCore": {
+    "name": "MegaDrive",
+    "file": "MegaDrive_20260901.rbf",
+    "mglPath": "_Console/MegaDrive"
+   }
+  }
+ ],
+ "media": [
+  {
+   "mediaId": 4812,
+   "system": {
+    "id": "SNES",
+    "name": "Super Nintendo Entertainment System"
+   },
+   "name": "Super Metroid",
+   "path": "SNES/Super Metroid (USA).sfc",
+   "relativePath": "SNES/Super Metroid (USA).sfc",
+   "hasCover": false,
+   "zapScript": "@SNES/Super Metroid",
+   "tags": []
+  },
+  {
+   "mediaId": 4813,
+   "system": {
+    "id": "SNES",
+    "name": "Super Nintendo Entertainment System"
+   },
+   "name": "Donkey Kong Country",
+   "path": "SNES/Donkey Kong Country (USA).sfc",
+   "relativePath": "SNES/Donkey Kong Country (USA).sfc",
+   "hasCover": false,
+   "zapScript": "@SNES/Donkey Kong Country",
+   "tags": []
+  },
+  {
+   "mediaId": 4901,
+   "system": {
+    "id": "Genesis",
+    "name": "Sega Genesis"
+   },
+   "name": "Gunstar Heroes",
+   "path": "Genesis/Gunstar Heroes (USA).md",
+   "relativePath": "Genesis/Gunstar Heroes (USA).md",
+   "hasCover": false,
+   "zapScript": "@Genesis/Gunstar Heroes",
+   "tags": []
+  }
+ ],
+ "history": [
+  {
+   "mediaId": 4901,
+   "systemId": "Genesis",
+   "systemName": "Sega Genesis",
+   "mediaName": "Gunstar Heroes",
+   "mediaPath": "/media/fat/games/Genesis/Gunstar Heroes (USA).md",
+   "zapScript": "@Genesis/Gunstar Heroes",
+   "hasCover": false,
+   "launcherId": "Genesis",
+   "startedAt": "2026-10-13T17:30:00-07:00",
+   "endedAt": "2026-10-13T18:00:00-07:00",
+   "playTime": 1800,
+   "sessionSource": "active_media",
+   "sessionConfidence": "exact"
+  }
+ ],
+ "readers": [],
+ "mappings": [],
+ "files": {
+  "MiSTer.ini": "[MiSTer]\nvideo_mode=8\nvscale_mode=0\n\n[SNES]\nvscale_mode=1\n"
+ },
+ "saves": {
+  "saves/SNES/Super Metroid (USA).sav": 8192
+ }
+}
