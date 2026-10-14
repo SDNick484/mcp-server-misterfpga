@@ -1,0 +1,320 @@
+{
+ "name": "Office",
+ "model": "MiSTer Pi",
+ "systems": [
+  {
+   "id": "SNES",
+   "name": "Super Nintendo Entertainment System",
+   "category": "Console",
+   "categories": [
+    "Console"
+   ]
+  },
+  {
+   "id": "Genesis",
+   "name": "Sega Genesis",
+   "category": "Console",
+   "categories": [
+    "Console"
+   ]
+  },
+  {
+   "id": "NES",
+   "name": "Nintendo Entertainment System",
+   "category": "Console",
+   "categories": [
+    "Console"
+   ]
+  },
+  {
+   "id": "Arcade",
+   "name": "Arcade",
+   "category": "Arcade",
+   "categories": [
+    "Arcade"
+   ]
+  },
+  {
+   "id": "PSX",
+   "name": "Sony PlayStation",
+   "category": "Console",
+   "categories": [
+    "Console"
+   ]
+  },
+  {
+   "id": "ao486",
+   "name": "PC (486)",
+   "category": "Computer",
+   "categories": [
+    "Computer"
+   ]
+  }
+ ],
+ "launchers": [
+  {
+   "id": "SNES",
+   "systemId": "SNES",
+   "systemName": "Super Nintendo Entertainment System",
+   "available": true,
+   "default": true,
+   "backend": "mister_core",
+   "misterCore": {
+    "name": "SNES",
+    "file": "SNES_20260901.rbf",
+    "mglPath": "_Console/SNES"
+   }
+  },
+  {
+   "id": "Genesis",
+   "systemId": "Genesis",
+   "systemName": "Sega Genesis",
+   "available": true,
+   "default": true,
+   "backend": "mister_core",
+   "misterCore": {
+    "name": "MegaDrive",
+    "file": "MegaDrive_20260901.rbf",
+    "mglPath": "_Console/MegaDrive"
+   }
+  },
+  {
+   "id": "NES",
+   "systemId": "NES",
+   "systemName": "Nintendo Entertainment System",
+   "available": true,
+   "default": true,
+   "backend": "mister_core",
+   "misterCore": {
+    "name": "NES",
+    "file": "NES_20260901.rbf",
+    "mglPath": "_Console/NES"
+   }
+  },
+  {
+   "id": "ao486",
+   "systemId": "ao486",
+   "systemName": "PC (486)",
+   "available": true,
+   "default": true,
+   "backend": "mister_core",
+   "misterCore": {
+    "name": "ao486",
+    "file": "ao486_20260901.rbf",
+    "mglPath": "_Computer/ao486"
+   }
+  }
+ ],
+ "media": [
+  {
+   "mediaId": 101,
+   "system": {
+    "id": "SNES",
+    "name": "Super Nintendo Entertainment System"
+   },
+   "name": "Super Metroid",
+   "path": "SNES/Super Metroid (USA).sfc",
+   "relativePath": "SNES/Super Metroid (USA).sfc",
+   "hasCover": false,
+   "zapScript": "@SNES/Super Metroid",
+   "tags": []
+  },
+  {
+   "mediaId": 102,
+   "system": {
+    "id": "SNES",
+    "name": "Super Nintendo Entertainment System"
+   },
+   "name": "Chrono Trigger",
+   "path": "SNES/Chrono Trigger (USA).sfc",
+   "relativePath": "SNES/Chrono Trigger (USA).sfc",
+   "hasCover": false,
+   "zapScript": "@SNES/Chrono Trigger",
+   "tags": []
+  },
+  {
+   "mediaId": 103,
+   "system": {
+    "id": "SNES",
+    "name": "Super Nintendo Entertainment System"
+   },
+   "name": "Super Mario World",
+   "path": "SNES/Super Mario World (USA).sfc",
+   "relativePath": "SNES/Super Mario World (USA).sfc",
+   "hasCover": false,
+   "zapScript": "@SNES/Super Mario World",
+   "tags": []
+  },
+  {
+   "mediaId": 104,
+   "system": {
+    "id": "Genesis",
+    "name": "Sega Genesis"
+   },
+   "name": "Sonic the Hedgehog",
+   "path": "Genesis/Sonic the Hedgehog (USA, Europe).md",
+   "relativePath": "Genesis/Sonic the Hedgehog (USA, Europe).md",
+   "hasCover": false,
+   "zapScript": "@Genesis/Sonic the Hedgehog",
+   "tags": []
+  },
+  {
+   "mediaId": 105,
+   "system": {
+    "id": "NES",
+    "name": "Nintendo Entertainment System"
+   },
+   "name": "Contra",
+   "path": "NES/Contra (USA).nes",
+   "relativePath": "NES/Contra (USA).nes",
+   "hasCover": false,
+   "zapScript": "@NES/Contra",
+   "tags": []
+  },
+  {
+   "mediaId": 106,
+   "system": {
+    "id": "Arcade",
+    "name": "Arcade"
+   },
+   "name": "Street Fighter II",
+   "path": "Arcade/Street Fighter II (World 910522).mra",
+   "relativePath": "Arcade/Street Fighter II (World 910522).mra",
+   "hasCover": false,
+   "zapScript": "@Arcade/Street Fighter II (region:world)",
+   "tags": [
+    {
+     "type": "region",
+     "tag": "world"
+    }
+   ],
+   "disambiguatingTags": [
+    {
+     "type": "region",
+     "tag": "world"
+    }
+   ]
+  },
+  {
+   "mediaId": 107,
+   "system": {
+    "id": "Arcade",
+    "name": "Arcade"
+   },
+   "name": "Street Fighter II",
+   "path": "Arcade/Street Fighter II (Japan 910214).mra",
+   "relativePath": "Arcade/Street Fighter II (Japan 910214).mra",
+   "hasCover": false,
+   "zapScript": "@Arcade/Street Fighter II (region:jp)",
+   "tags": [
+    {
+     "type": "region",
+     "tag": "jp"
+    }
+   ],
+   "disambiguatingTags": [
+    {
+     "type": "region",
+     "tag": "jp"
+    }
+   ]
+  },
+  {
+   "mediaId": 108,
+   "system": {
+    "id": "PSX",
+    "name": "Sony PlayStation"
+   },
+   "name": "Castlevania Symphony of the Night",
+   "path": "PSX/Castlevania - Symphony of the Night (USA).chd",
+   "relativePath": "PSX/Castlevania - Symphony of the Night (USA).chd",
+   "hasCover": false,
+   "zapScript": "@PSX/Castlevania Symphony of the Night",
+   "tags": [],
+   "coreMissing": true
+  }
+ ],
+ "history": [
+  {
+   "mediaId": 101,
+   "systemId": "SNES",
+   "systemName": "Super Nintendo Entertainment System",
+   "mediaName": "Super Metroid",
+   "mediaPath": "/media/fat/games/SNES/Super Metroid (USA).sfc",
+   "zapScript": "@SNES/Super Metroid",
+   "hasCover": false,
+   "launcherId": "SNES",
+   "startedAt": "2026-10-12T20:01:00-07:00",
+   "endedAt": "2026-10-12T21:15:00-07:00",
+   "playTime": 4440,
+   "sessionSource": "active_media",
+   "sessionConfidence": "exact"
+  },
+  {
+   "mediaId": 104,
+   "systemId": "Genesis",
+   "systemName": "Sega Genesis",
+   "mediaName": "Sonic the Hedgehog",
+   "mediaPath": "/media/fat/games/Genesis/Sonic the Hedgehog (USA, Europe).md",
+   "zapScript": "@Genesis/Sonic the Hedgehog",
+   "hasCover": false,
+   "launcherId": "Genesis",
+   "startedAt": "2026-10-11T19:00:00-07:00",
+   "endedAt": "2026-10-11T19:20:00-07:00",
+   "playTime": 1200,
+   "sessionSource": "active_media",
+   "sessionConfidence": "exact"
+  },
+  {
+   "mediaId": 101,
+   "systemId": "SNES",
+   "systemName": "Super Nintendo Entertainment System",
+   "mediaName": "Super Metroid",
+   "mediaPath": "/media/fat/games/SNES/Super Metroid (USA).sfc",
+   "zapScript": "@SNES/Super Metroid",
+   "hasCover": false,
+   "launcherId": "SNES",
+   "startedAt": "2026-10-10T20:00:00-07:00",
+   "endedAt": "2026-10-10T20:45:00-07:00",
+   "playTime": 2700,
+   "sessionSource": "active_media",
+   "sessionConfidence": "exact"
+  }
+ ],
+ "readers": [
+  {
+   "id": "/dev/ttyUSB0",
+   "readerId": "pn532-sim",
+   "driver": "pn532",
+   "info": "PN532 (simulated)",
+   "scanMode": "tap",
+   "capabilities": [
+    "read",
+    "write"
+   ],
+   "connected": true
+  }
+ ],
+ "mappings": [
+  {
+   "id": "1",
+   "added": "2026-10-01T10:00:00-07:00",
+   "label": "Contra card",
+   "enabled": true,
+   "type": "uid",
+   "match": "exact",
+   "pattern": "04aabbccdd",
+   "override": "@NES/Contra"
+  }
+ ],
+ "files": {
+  "MiSTer.ini": "[MiSTer]\n; video\nvideo_mode=8\nvscale_mode=0\nrecents=1\nlog_file_entry=0\n\n[arcade_vertical]\nvscale_mode=1\n",
+  "MiSTer_crt.ini": "[MiSTer]\nvga_scaler=0\ncomposite_sync=1\n"
+ },
+ "saves": {
+  "saves/SNES/Super Metroid (USA).sav": 8192,
+  "saves/SNES/Chrono Trigger (USA).sav": 8192,
+  "saves/Genesis/Sonic the Hedgehog (USA, Europe).sav": 512,
+  "savestates/SNES/Super Metroid (USA)_1.ss": 40000
+ }
+}
