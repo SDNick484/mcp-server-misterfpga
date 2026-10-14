@@ -1,8 +1,8 @@
 # mcp-server-misterfpga: Phase 0 design
 
-Status: **draft for review**. No server code exists yet; this document is the whole of Phase 0.
-Once approved, it stays in the repo as written, and a "What changed during the build" section
-gets added at the end (the same convention as mcp-server-webos's `docs/PLAN.md`).
+Status: **approved 2026-10-13**, with the answers to the open questions recorded in §12 and
+folded into the sections they affect. It stays in the repo as written; a "What changed during the
+build" section gets added at the end (the same convention as mcp-server-webos's `docs/PLAN.md`).
 
 Read for this design (2026-10-13):
 
@@ -45,7 +45,7 @@ sources point to a simpler and safer split.
    doesn't support per-core sections like `[SNES]` ("Sections... are not currently supported").
    That's exactly the per-core case you asked for. So INI work goes over SSH. Remote would add a
    third fake, a third set of assumptions, and a third failure mode, all for features we'd get
-   elsewhere. Recommendation: leave it out, and keep it as a possible later backend (§11, Q1).
+   elsewhere. **Decided (Q1): left out of v1**, kept as a possible later backend.
 3. **python-mister-fpga: don't depend on it.**
    - It wraps the mrext Remote API, which we're not using.
    - It had five days of activity (2026-05-31 to 06-04) and nothing since.
@@ -61,7 +61,11 @@ sources point to a simpler and safer split.
    - They don't get `device.status`, `update.check`, `update.apply`, backups, or power.
    - A static API key would grant admin. But `HTTPAuthMiddleware` returns 401 to *every*
      key-less remote request once any key is configured, which could lock out the Zaparoo phone
-     app. So v1 uses legacy access only, and gets disk and core information over SSH (§11, Q2).
+     app. **Decided (Q2): no key.** v1 uses legacy access only, and gets disk and core
+     information over SSH.
+   - **Zaparoo isn't installed on a MiSTer by default (Q9).** It's one item in Update All's
+     Tools & Scripts. The README gets a "Set up your MiSTer" section with the steps, and
+     `doctor` and the `get_status` limitation point at it (§4).
 5. **Updates can run on the TV instead of headless.** ZapScript `**mister.script:update_all.sh`
    runs update_all on-screen, exactly as if you'd picked it from the Scripts menu.
    - You see the progress and can intervene.
@@ -148,6 +152,27 @@ legacy clients.
 **Capability names:** `search`, `launch`, `history`, `screenshot`, `nfc_read`, `nfc_write`,
 `nfc_map`, `ini_read`, `ini_write`, `backup_saves`, `update`, `attract_detection`, `core_name`.
 
+### Setting up a MiSTer (README section, Q9)
+
+Zaparoo Core isn't on a MiSTer by default. The README walks through it, from Zaparoo's
+[MiSTer page](https://zaparoo.org/docs/platforms/mister/):
+
+1. Run **Update All**, open its settings (press UP during the countdown), and turn on
+   **Zaparoo** under **Tools & Scripts**. Save and let it run.
+2. On the MiSTer, open **Scripts → zaparoo** and accept the prompt to start it as a service at
+   boot.
+3. Check it from another machine: `http://<mister-ip>:7497/app/` opens Zaparoo's web UI.
+4. For accurate tracking of games launched from the MiSTer's own menu, set `recents=1` and
+   `log_file_entry=1` in `[MiSTer]`. That's Zaparoo's own advice. `set_ini` can do this once SSH
+   works; `doctor` checks both and says when they're off.
+5. SSH: `ssh-copy-id root@<mister-ip>` (MiSTer's stock root password is `1`), then
+   `mcp-server-misterfpga check --host <ip> --ssh` to confirm and pin the host key.
+
+When Zaparoo isn't reachable, `get_status` lists the limitation "Zaparoo Core isn't running on
+<host> (port 7497). Install it from Update All → Tools & Scripts; see the README's setup
+section." `doctor` tells apart "connection refused" (not installed, or the service isn't
+enabled) from "no route" (wrong address, or the MiSTer is off).
+
 ## 5. Hosts, names and references
 
 Config lives at `~/.config/mcp-server-misterfpga/config.json`. `MISTERFPGA_HOSTS` is a
@@ -156,20 +181,30 @@ comma-separated override, as in Harmony.
 ```json
 {
   "hosts": [
-    {"host": "192.168.1.70", "name": "Pi",
+    {"host": "192.168.1.70", "name": "Office", "model": "MiSTer Pi",
      "ssh": {"user": "root", "key": "~/.ssh/mister_ed25519", "host_key": "ssh-ed25519 AAAA..."}},
-    {"host": "192.168.1.71", "name": "SuperStation"}
+    {"host": "192.168.1.71", "name": "Family Room", "model": "SuperStation One",
+     "manufacturer": "Retro Remake"}
   ],
-  "backup_dir": "/srv/omv/mister-saves"
+  "backup_dir": "/mnt/backups/mister-saves"
 }
 ```
 
 - **Names.** The config name if set, else the SSH `hostname`, else the address. `check` saves the
-  name and never overwrites one you wrote. Harmony's rule.
-- **Refs.** A game ref is `<host>/<mediaId>`, e.g. `SuperStation/4812`. `mediaId` is Zaparoo's
+  name and never overwrites one you wrote. Harmony's rule. Naming hosts by where they are
+  ("Office", "Family Room") works best, because `model` already says what they are.
+- **Model (Q6).** `model` (free text, default `MiSTer FPGA`) and optional `manufacturer` say
+  what the device *is*: a MiSTer Pi, a SuperStation One, a DE10-Nano. Nothing this server can
+  read with unauthenticated access says which board it's talking to, so it's configured, and
+  `check` asks for it. It shows up in `get_status`, in the play tracker's payloads and in the
+  Home Assistant device (§10).
+- **`backup_dir` (Q7)** has no default. Until `backup_dir` or `MISTERFPGA_BACKUP_DIR` is set,
+  `backup_saves` is a limitation that says so. Any directory the server can write to works: a
+  local disk, NFS, SMB, or an OMV share mounted into the LXC.
+- **Refs.** A game ref is `<host>/<mediaId>`, e.g. `Family Room/4812`. `mediaId` is Zaparoo's
   opaque row id, and `media.meta {mediaId}` turns it back into the exact `zapScript`, so the
   server holds no ref cache. A reindex can renumber rows. A stale ref then gets "not found on
-  SuperStation; search again", never a guess.
+  Family Room; search again", never a guess.
 - **Never guess.** Same rule as Harmony:
   - An action without `host` acts only when exactly one host fits: the ref's host, or the one
     host that's running something.
@@ -256,12 +291,12 @@ games".
 - The ZapScript comes from `media.meta` (for `game`) or is `**launch.system:<id>`, built by the
   server from a validated id. `run` waits for execution. Then the server polls `media.active` for
   up to 10 s, because it doesn't trust a send (the webOS/Shield lesson).
-- **Refuses if anything is running on that host:** "SuperStation is playing Super Metroid; call
+- **Refuses if anything is running on that host:** "Family Room is playing Super Metroid; call
   return_to_menu first". Same as Batocera's `launch_game`. The model then makes the destructive
   step a separate, visible call. That's also why `launch` itself isn't destructive.
 - **Result:** `{host, launched, system, confirmed, warnings}`.
 - `run` errors map to readable reasons. `launch_repair` with `launcher_plugin_missing`, for
-  example, becomes "the SNES core isn't installed on SuperStation".
+  example, becomes "the SNES core isn't installed on Family Room".
 
 **`return_to_menu(host?)`** `_DESTRUCTIVE` (idempotent)
 
@@ -280,9 +315,12 @@ games".
 - **`key`:** must be in MiSTer's own key table (`ini_vars[]` in Main_MiSTer `cfg.cpp`, 112 keys
   at `2dd3662`), minus a deny-list:
   - `MAIN`: boots an alternate Main binary.
-  - `SHARED_FOLDER`, `LOG_FILE_ENTRY`, `DEBUG`: filesystem and debug paths.
-  - `BOOTCORE`: it can make every boot skip the menu, which is surprising and annoying to undo.
-    Listed under open questions (Q5) rather than decided here.
+  - `SHARED_FOLDER`, `DEBUG`: a filesystem path, and debug output.
+  - `BOOTCORE` (**decided, Q5**): it can make every boot skip the menu, which is surprising and
+    annoying to undo.
+
+  `LOG_FILE_ENTRY` was on this list in the first draft. It's allowed: Zaparoo's setup guide
+  asks for `log_file_entry=1` (with `recents=1`) for accurate tracking of menu launches (§4).
 - **`value`:** checked against the table's type and range. `UINT8 0..1` must be 0 or 1; strings
   have a length cap and no control characters. `null` removes the key.
 - **`section`:** one of these forms, as `ini_get_section()` matches them:
@@ -294,7 +332,8 @@ games".
 - **Write path:** read → edit in place (comments and order kept; new keys go at the end of their
   section; a missing section is created) → copy the original to
   `/media/fat/MiSTer.ini.<UTC timestamp>.bak` → write `MiSTer.ini.tmp` → rename over the
-  original.
+  original. The newest 10 of this server's `.bak` files are kept; older ones it made are
+  removed, and nothing else in `/media/fat` is ever deleted.
 - **Result:** `{host, file, section, key, old, new, backup, diff, takes_effect}`. `takes_effect`
   is "next core load", since MiSTer reads the INI when a core starts. Not automatic: the server
   doesn't reload the core for you.
@@ -303,7 +342,8 @@ games".
 **`backup_saves(host?, dry_run=False)`** `_ACT_IDEMPOTENT`
 
 - Pulls `/media/fat/saves` and `/media/fat/savestates` over SFTP into
-  `<backup_dir>/<host>/<YYYY-MM-DD_HHMMSS>/`.
+  `<backup_dir>/<host>/<YYYY-MM-DD_HHMMSS>/`. `backup_dir` is whatever you configure (§5); with
+  none, the tool is unavailable and says how to set it.
 - Unchanged files (same size and mtime) are hard-linked to the previous snapshot, as
   `rsync --link-dest` does. Each snapshot is complete, and they cost only the changes.
 - Keeps the last 30 snapshots (configurable).
@@ -359,8 +399,10 @@ games".
 - **Synced, never edited:** `remote.py`, `logsafe.py`, `tasks.py` and their tests,
   `scripts/sync_shared.py`, `shared.lock`. Same for the `shared-drift` job.
 - **Proposed promotions to mcp-server-shared**, each as a separate PR:
-  1. **`limits.py` (`TokenBucket`).** Harmony and Sofabaton already carry identical copies
-     ("shared with Sofabaton only"), and this would be the third. The strongest candidate.
+  1. **`TokenBucket`, as a new shared `ratelimit.py`** (decided, Q8; first). Harmony and
+     Sofabaton already carry identical `limits.py` copies ("shared with Sofabaton only"), and
+     this would be the third. Only the class is shared: each sibling's `limits.py` keeps its own
+     numbers (presses, activity changes) and imports `TokenBucket` from `ratelimit.py`.
   2. **The `Assumption` dataclass and the generic half of `test_assumptions.py`.** Every id must
      appear in README and HARDWARE_VALIDATION.md. Harmony, Sofabaton, webOS and this repo all
      carry their own copy.
@@ -427,9 +469,10 @@ games".
 - **`FakeMister`** (asyncssh server): a temp-dir SD card (`/media/fat/...`), `/tmp/CORENAME`, a
   SAM process table, a host key, and only the closed command set. Anything else gets an error, so
   a test fails if the server ever sends something new.
-- **Fixtures:** two hosts, `Pi` (127.0.0.1) and `SuperStation` (127.0.0.2).
+- **Fixtures:** two hosts, `Office` (a MiSTer Pi, 127.0.0.1) and `Family Room` (a SuperStation
+  One, 127.0.0.2).
   - Both libraries contain *Super Metroid*, on purpose: it's the ambiguity test case.
-  - The SuperStation also has a `[SNES]` INI section.
+  - Family Room's `MiSTer.ini` also has a `[SNES]` section.
 - **`simulate`** runs both fakes. `doctor --dump` records redacted captures, which
   `test_recorded.py` replays.
 
@@ -444,7 +487,7 @@ Assumption ids, prefix by source: `Z-` Zaparoo, `M-` MiSTer, `S-` SAM, `U-` Upda
 | Z-RUN-WAITS | `run` returns after execution finishes; 30 s server timeout; `data.category` on failure | methods.md § run | high |
 | Z-STOP-MENU | `stop` returns an FPGA core to the menu | `run.go:365` → `StopForMenu` → `ReturnToMenu` | medium |
 | Z-MEDIAID | `media.meta {mediaId}` returns `zapScript`; ids survive until a reindex | methods.md § media.meta | medium |
-| Z-TRACKS-MENU | Games launched from MiSTer's own menu produce `media.started`/`stopped` | `tracker/tracker.go` | medium |
+| Z-TRACKS-MENU | Games launched from MiSTer's own menu produce `media.started`/`stopped`; matching the exact game needs `recents=1` and `log_file_entry=1` | `tracker/tracker.go`; zaparoo.org `platforms/mister` § Game tracking | medium |
 | Z-NOTIFY | Started: `systemId, systemName, mediaPath, mediaName`; stopped adds `launcherId, elapsed` | `docs/api/notifications.md` | high |
 | Z-HISTORY | `media.history` holds those sessions, incl. menu launches | methods.md § media.history | medium |
 | Z-SCREENSHOT | `screenshot` → `{path, data(base64), size}` on MiSTer | methods.md § screenshot | high |
@@ -476,17 +519,22 @@ a script on the MiSTer as with Batocera.
 reconnect. It reads `media.history` back to its last recorded `startedAt` and publishes anything
 it missed. Batocera's on-device outbox solves the same problem; here Zaparoo is the outbox.
 
-**Topics and payloads: Batocera's, unchanged.**
+**Topics and payloads: Batocera's shape, plus what the device is (Q6).**
 
-- Topics: `<prefix>/<device_id>/now_playing` (retained), `last_session` (retained), `session`
-  (event, `event_type: session_end`), and `status`.
-- HA discovery is the same six entities.
-- Payload keys: `game, system, rom, source, started, ended, duration_s`.
-- Defaults: `prefix = misterfpga`, `device_id` = the host name slugged (`pi`, `superstation`).
+- Topics: `misterfpga/<host>/now_playing` (retained), `last_session` (retained), `session`
+  (event, `event_type: session_end`), and `status`. `<host>` is the host name slugged
+  (`office`, `family_room`).
+- Payload keys: Batocera's `game, system, rom, source, started, ended, duration_s`, plus
+  `host` (the name) and `device` (the configured `model`, e.g. `SuperStation One`). A session
+  record on its own says which machine it was played on, even outside Home Assistant.
+- HA discovery: the same six entities, under one HA device per MiSTer:
+  - `name`: name and model together, e.g. "Family Room SuperStation One", so entities read
+    "Family Room SuperStation One Now playing";
+  - `model`: the configured model; `manufacturer`: the configured one, else "MiSTer FPGA";
+  - `sw_version`: the Zaparoo Core version; `identifiers`: `misterfpga_<host>`.
 
-HA then sees three devices (the arcade, two MiSTers) with identical entity shapes, and one
-automation or dashboard card template covers all three. A literal single shared topic would need a
-Batocera change, which I'd rather not make from here (Q6).
+HA then sees three devices (the arcade and the two MiSTers) with identical entity shapes, so one
+automation or dashboard card template covers all three.
 
 **Filtering.**
 
@@ -502,41 +550,29 @@ Batocera change, which I'd rather not make from here (Q6).
 - **stdio:** `mcp-server-misterfpga` for Claude Code and Desktop.
 - **HTTP:** `serve --http`, binding `127.0.0.1:8716/misterfpga/mcp` through the shared
   `remote.py`, under the same OpenRC layout as webOS.
-- **LAN-only by default, as Batocera.** The env file ships with no `MCP_PUBLIC_HOSTS` and no
-  Cloudflare settings.
+- **LAN-only (decided, Q3), as Batocera.** The env file ships with no `MCP_PUBLIC_HOSTS` and no
+  Cloudflare settings, and the README says why: this server can start an update that reboots a
+  MiSTer, and its SSH key is root on both.
 
-**Exposing it at mcp.nickandrade.com would take:**
+For the record, exposing it later would take a Cloudflare Access application for
+`/misterfpga/*`, the `CF_ACCESS_*`, `MCP_ALLOWED_EMAILS` and `MCP_PUBLIC_HOSTS` settings, and a
+tunnel ingress rule. `remote.py` already refuses a non-loopback bind without Access.
 
-1. A Cloudflare Access application for `/misterfpga/*` with your email, and its AUD tag in
-   `CF_ACCESS_AUD`.
-2. `CF_ACCESS_TEAM_DOMAIN`, `MCP_ALLOWED_EMAILS`, `MCP_PUBLIC_HOSTS=mcp.nickandrade.com`.
-3. A tunnel ingress rule for the path on the existing cloudflared.
+## 12. Decisions (2026-10-13)
 
-`remote.py` already refuses a non-loopback bind without Access. The thing to weigh: this server
-can start an update that reboots a MiSTer, and SSH holds a root key. Those are the arguments for
-keeping it LAN-only. If you want it remote, one option is to also set `MISTERFPGA_REMOTE_READONLY=1`
-for the HTTP transport, which would hide the `_DESTRUCTIVE` tools (Q3).
+| # | Question | Decision | Where it landed |
+|---|---|---|---|
+| 1 | Drop mrext Remote from v1? | Yes | §1.2, §4 |
+| 2 | Zaparoo API key? | No key; legacy access, SSH for disk and core | §1.4 |
+| 3 | Remote exposure? | LAN-only | §11 |
+| 4 | SSH on both MiSTers? | Yes (still optional per host in the code) | §4 |
+| 5 | `BOOTCORE` in `set_ini`? | Denied | §6 |
+| 6 | Tracker topics? | `misterfpga/<host>/...`, and every payload and HA device says which device it is | §5 (`model`), §10 |
+| 7 | Backup location? | User-configured, no default; OMV is one example, not an assumption | §5, §6 |
+| 8 | Promote rate limiting to mcp-server-shared first? | Yes | §7 |
+| 9 | Zaparoo on the MiSTers? | Not installed by default, but easy to add; the README documents it | §1.4, §4 |
 
-## 12. Open questions
-
-1. **Drop mrext Remote from v1?** I recommend yes (§1.2): Zaparoo plus SSH covers everything, and
-   Remote can't edit per-core sections.
-2. **Zaparoo API key?** Admin would add `device.status` (disk, controllers, display) and Zaparoo's
-   own update check. But configuring any key makes Zaparoo refuse every key-less remote client,
-   possibly including your phone app. I recommend legacy access only, with SSH for disk and core,
-   until we see on hardware what pairing does to the app.
-3. **Remote exposure:** stay LAN-only (recommended), or add the read-only HTTP mode from §11?
-4. **SSH is optional per host.** Without it you lose INI, backups, attract detection and core
-   name. Do you want SSH on both MiSTers?
-5. **`BOOTCORE` in `set_ini`:** allow or deny? (Denied in this draft.)
-6. **Tracker topic prefix:** `misterfpga/<host>/...` with Batocera's payload (recommended), or a
-   shared `retro/<device>/...` for both, which means a follow-up PR on mcp-server-batocera?
-7. **Backups:** where should `backup_dir` point? An OMV share mounted into the LXC, e.g.
-   `/srv/omv/mister-saves`? And is 30 snapshots the right retention?
-8. **Shared promotions (§7):** OK to open the `limits.py` PR against mcp-server-shared first and
-   build on it?
-9. **SuperStation One:** do you know whether Zaparoo Core is installed on it yet? H-SS1 is the
-   least certain assumption here.
+Snapshot retention stays at 30, configurable.
 
 ## Sources
 
