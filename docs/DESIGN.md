@@ -589,3 +589,27 @@ Snapshot retention stays at 30, configurable.
   `MiSTer_SAM.ini`.
 - [Update_All_MiSTer](https://github.com/theypsilon/Update_All_MiSTer): `src/update_all/config.py`.
 - [python-mister-fpga](https://github.com/hudsonbrendon/python-mister-fpga).
+
+## What changed during the build
+
+The build follows this design. Where the code differs, this is where, and why:
+
+- **`get_ini` / `set_ini` take `file`, not `ini=1..4`.** MiSTer orders its alternate INI files by
+  a rule (first three candidates, then a case-insensitive sort) that the server would have to
+  reproduce exactly, so a slot number risked editing the wrong file. A file name can't be wrong:
+  `get_ini` lists the `MiSTer*.ini` files there are, and `file` defaults to `MiSTer.ini`.
+- **`tokens`, not `tokens.history`.** `tokens` already returns the card on the reader now and the
+  last one scanned (with `scanTime`), which is all `map_nfc_card` needs, so `tokens.history` came
+  off the Zaparoo allow-list.
+- **Cores come from `launchers`.** Each MiSTer-core launcher reports
+  `misterCore: {name, file, mglPath}`. `list_systems` shows `mglPath` (`_Console/SNES`), and
+  `set_ini` uses `name` to warn when a core section (`[SNSE]`) matches no installed core.
+- **`screenshot` returns MCP image content** (a `CallToolResult` with the PNG plus a small JSON
+  part), so it has no outputSchema. In dry-run mode it still takes the screenshot: it only adds a
+  file under `screenshots/`.
+- **`get_status` with no MiSTer configured is an error** that says how to add one, rather than an
+  empty list.
+- **Rate-limit messages** come from the shared `ratelimit.refusal()`. `shared.lock` points at the
+  mcp-server-shared#1 branch commit until that PR merges; then `sync_shared.py --update` moves it
+  to `main`.
+- **Two backups in the same second** get `-2`, `-3` suffixes instead of failing.
