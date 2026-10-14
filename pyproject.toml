@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mcp-server-misterfpga"
+version = "0.1.0"
+description = "MCP server for MiSTer FPGA devices: games through Zaparoo Core, MiSTer.ini and save backups over SSH, several MiSTers at once"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Nicholas E. Andrade" }]
+requires-python = ">=3.11"
+keywords = ["mcp", "mcp-server", "mister", "mister-fpga", "fpga", "zaparoo", "retro-gaming"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Games/Entertainment",
+]
+dependencies = [
+    "mcp>=2.3,<3",
+    "aiohttp>=3.9",          # Zaparoo Core's WebSocket API (client), and the simulator's fake Zaparoo (server)
+    "asyncssh>=2.17",        # MiSTer.ini and saves over SSH/SFTP, and the simulator's fake MiSTer
+    "typing_extensions>=4.7",
+    "pyjwt[crypto]>=2.10",   # verifying Cloudflare Access assertions (remote.py)
+    "uvicorn>=0.31",         # the HTTP transport (remote.py)
+]
+
+[project.urls]
+Homepage = "https://github.com/SDNick484/mcp-server-misterfpga"
+Issues = "https://github.com/SDNick484/mcp-server-misterfpga/issues"
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "anyio>=4", "ruff>=0.6", "mypy>=1.11", "httpx2"]
+
+[project.scripts]
+mcp-server-misterfpga = "misterfpga_mcp.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+misterfpga_mcp = ["sim/fixtures/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+src = ["src", "tests"]
+# Newer ruff also formats Python inside Markdown; the docs' snippets are illustrations, laid out by hand.
+extend-exclude = ["*.md"]
+
+[tool.ruff.lint]
+# pycodestyle, pyflakes, isort, pyupgrade, bugbear, simplify (same as the siblings)
+select = ["E", "W", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+files = ["src"]
+strict = true
