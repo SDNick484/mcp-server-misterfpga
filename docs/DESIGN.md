@@ -556,7 +556,8 @@ automation or dashboard card template covers all three.
 
 For the record, exposing it later would take a Cloudflare Access application for
 `/misterfpga/*`, the `CF_ACCESS_*`, `MCP_ALLOWED_EMAILS` and `MCP_PUBLIC_HOSTS` settings, and a
-tunnel ingress rule. `remote.py` already refuses a non-loopback bind without Access.
+tunnel ingress rule. `remote.py` already refuses a non-loopback bind without Access (unless
+`--insecure-no-auth` is passed, which this server's docs say not to do).
 
 ## 12. Decisions (2026-10-13)
 

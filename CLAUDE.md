@@ -64,7 +64,10 @@ software/systems engineer: be technical and concrete, with specific examples.
   as `# ASSUMPTION <id>` where code depends on it, in README's table and HARDWARE_VALIDATION.md.
   `test_assumptions` enforces it.
 - No Zaparoo API key or pairing: legacy access is enough on MiSTer, and a key would lock out the
-  Zaparoo app (DESIGN §1.4). LAN-only: don't add Cloudflare exposure (DESIGN §11, Q3).
+  Zaparoo app (DESIGN §1.4).
+- **LAN-only: don't add Cloudflare exposure** (DESIGN §11, Q3). But LAN-only isn't stdio-only:
+  `serve --http` (the Alpine service, on 127.0.0.1) runs on shared `remote.py`, so don't add
+  `exclude = ["remote"]` to `shared.lock` the way Batocera and Pixelcade do.
 - `set_ini` denies `MAIN`, `SHARED_FOLDER`, `DEBUG`, `BOOTCORE` and array keys; `LOG_FILE_ENTRY`
   is allowed on purpose (Zaparoo's tracking setup needs it).
 - Raise `MisterError` (a `ToolError`) for anything the model or user can act on; say what to do.

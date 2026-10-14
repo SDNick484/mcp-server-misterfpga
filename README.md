@@ -82,7 +82,7 @@ claude mcp add misterfpga -- /path/to/.venv/bin/mcp-server-misterfpga     # Clau
 ```
 
 For Claude Desktop, add it to `claude_desktop_config.json` under `mcpServers` with the same
-command. This server is meant to stay on your LAN (see [HTTP](#http-and-the-alpine-service)).
+command. This server is meant to stay on your LAN (see [Local only](#local-only-stdio-or-http-on-loopback)).
 
 ### Tools
 
@@ -167,13 +167,29 @@ modification time) are hard-linked to it, as `rsync --link-dest` does: every sna
 complete on its own, and only changes cost space. A snapshot is written as `.partial` and renamed
 when complete. The newest `backup_keep` (30) are kept. The MiSTer is only read.
 
-## HTTP and the Alpine service
+## Local only: stdio, or HTTP on loopback
 
-`serve --http` serves Streamable HTTP on `127.0.0.1:8716/misterfpga/mcp` through the shared
-`remote.py` (Onkyo 8711 … webOS 8715). **This server is meant to stay on your LAN**: it can start
-an update that reboots a MiSTer, and its SSH key is root on them. So it isn't exposed through
-Cloudflare, and `remote.py` refuses any non-loopback address without Cloudflare Access. On the LAN,
-run it over stdio from Claude Code or Claude Desktop.
+**This server is meant to stay on your LAN.** Unlike its AV siblings (Onkyo, Shield TV, Harmony,
+Sofabaton, webOS), it isn't published through a Cloudflare Tunnel, so it isn't reachable from
+claude.ai or the Claude mobile app. That's on purpose: it can start an update that reboots a
+MiSTer, and its SSH key is root on them.
+
+There are two ways to run it:
+
+- **stdio**, the usual way: Claude Code or Claude Desktop launches it on a machine on your LAN.
+- **`serve --http`**: Streamable HTTP on `127.0.0.1:8716/misterfpga/mcp`, through the `remote.py`
+  it shares with its siblings (Onkyo 8711 … webOS 8715). `deploy/alpine/` runs this as a service.
+  The loopback bind keeps it inside that machine or container; nothing else on the LAN can reach it.
+
+Because `serve --http` runs on `remote.py`, this repo keeps mcp-server-shared's `remote` module.
+Batocera and Pixelcade exclude it, but they only ever speak stdio. Here, "LAN-only" means no
+tunnel route, not no HTTP.
+
+On any address other than loopback, `remote.py` refuses to start without Cloudflare Access, unless
+you pass `--insecure-no-auth`. **Don't use that flag for this server.** It exists for short tests
+on a trusted LAN, and here it would give anything that can reach the port reboot-capable,
+root-over-SSH control of your MiSTers. Its Host and Origin checks block DNS-rebinding from a
+browser, not a direct request.
 
 `deploy/alpine/` installs it as an OpenRC service (in an Alpine LXC, for example), owned by its
 own user, with the SSH key and `config.json` in `/var/lib/mcp-server-misterfpga` (0700):
