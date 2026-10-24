@@ -550,7 +550,8 @@ automation or dashboard card template covers all three.
 - **stdio:** `mcp-server-misterfpga` for Claude Code and Desktop.
 - **HTTP:** `serve --http`, binding `127.0.0.1:8716/misterfpga/mcp` through the shared
   `remote.py`, under the same OpenRC layout as webOS.
-- **LAN-only (decided, Q3), as Batocera.** The env file ships with no `MCP_PUBLIC_HOSTS` and no
+- **LAN-only (decided, Q3), as Batocera.** *Revised 2026-10-24: remote access through Cloudflare
+  Access, as Batocera now does; see "What changed during the build".* The env file ships with no `MCP_PUBLIC_HOSTS` and no
   Cloudflare settings, and the README says why: this server can start an update that reboots a
   MiSTer, and its SSH key is root on both.
 
@@ -565,7 +566,7 @@ tunnel ingress rule. `remote.py` already refuses a non-loopback bind without Acc
 |---|---|---|---|
 | 1 | Drop mrext Remote from v1? | Yes | §1.2, §4 |
 | 2 | Zaparoo API key? | No key; legacy access, SSH for disk and core | §1.4 |
-| 3 | Remote exposure? | LAN-only | §11 |
+| 3 | Remote exposure? | LAN-only; **revised 2026-10-24**: Cloudflare Tunnel + Access, as Batocera | §11, What changed |
 | 4 | SSH on both MiSTers? | Yes (still optional per host in the code) | §4 |
 | 5 | `BOOTCORE` in `set_ini`? | Denied | §6 |
 | 6 | Tracker topics? | `misterfpga/<host>/...`, and every payload and HA device says which device it is | §5 (`model`), §10 |
@@ -614,3 +615,20 @@ The build follows this design. Where the code differs, this is where, and why:
   mcp-server-shared#1 branch commit until that PR merges; then `sync_shared.py --update` moves it
   to `main`.
 - **Two backups in the same second** get `-2`, `-3` suffixes instead of failing.
+- **Remote access (Q3 revised, 2026-10-24).** Batocera moved from stdio-only to an HTTP service
+  behind Cloudflare Access (mcp-server-batocera `eb263c5`), and this server follows it so every
+  sibling is a connector in the Claude apps. Nothing in the code had to change: `serve --http`
+  already ran on `remote.py`, which verifies the `Cf-Access-Jwt-Assertion` on every request
+  (signature, audience, issuer, expiry, optional `MCP_ALLOWED_EMAILS`) and refuses a non-loopback
+  bind or a `--public-host` without Access. What changed is configuration and proof:
+  - `env.example` carries the `MCP_PUBLIC_HOSTS`, `CF_ACCESS_*` and `MCP_ALLOWED_EMAILS` lines;
+    the README's "Remote access" and "Service and Cloudflare" sections say how to wire the tunnel
+    route (`misterfpga/*` → `localhost:8716`) and the Access application.
+  - `tests/test_http_tools.py` runs these tools over HTTP with signed assertions, and shows a bad
+    assertion never reaches a MiSTer; the Alpine smoke test calls `get_status` over HTTP and checks
+    that Access settings in the env file turn the check on.
+  - The reasons for LAN-only (a reboot-capable update, a root SSH key) now argue for the server
+    being the gate rather than for no exposure: `MCP_ALLOWED_EMAILS` is recommended, and
+    `--insecure-no-auth` stays forbidden for the service.
+  - `open_world_hint` stays `False`. It describes what a tool reaches (two MiSTers on the LAN, a
+    closed set), not who may call it.

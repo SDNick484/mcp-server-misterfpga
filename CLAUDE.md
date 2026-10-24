@@ -40,10 +40,13 @@ software/systems engineer: be technical and concrete, with specific examples.
   `remote.py`, `logsafe.py`, `tasks.py`, `ratelimit.py`, `tests/test_{remote,logsafe,tasks,ratelimit}.py`,
   `scripts/sync_shared.py`. **Never edit them here**; change mcp-server-shared, then
   `python scripts/sync_shared.py --update`. CI's `shared-drift` job enforces it.
-- `deploy/alpine/`: OpenRC service (user `mcp-mister`, port 8716), install and smoke test
+- `deploy/alpine/`: OpenRC service (user `mcp-mister`, port 8716; HTTP and Access settings in
+  `/etc/mcp-server-misterfpga/env`), install and smoke test (which drives the service over HTTP)
 - `tests/`: `conftest.py` (`sim`, `configured`, `mcp_client`), `test_tools` (contract and
   behavior through an in-process MCP `Client`), `test_safety`, `test_ini`, `test_backup`,
   `test_nfc`, `test_zaparoo`, `test_config`, `test_cli` and `test_stdio` (subprocesses),
+  `test_http_tools` (these tools over HTTP with signed Access assertions; `test_remote` is the
+  shared transport test),
   `test_recorded` (replays `doctor --dump` captures), `test_assumptions`. Async tests use anyio's
   plugin.
 
@@ -65,9 +68,13 @@ software/systems engineer: be technical and concrete, with specific examples.
   `test_assumptions` enforces it.
 - No Zaparoo API key or pairing: legacy access is enough on MiSTer, and a key would lock out the
   Zaparoo app (DESIGN §1.4).
-- **LAN-only: don't add Cloudflare exposure** (DESIGN §11, Q3). But LAN-only isn't stdio-only:
-  `serve --http` (the Alpine service, on 127.0.0.1) runs on shared `remote.py`, so don't add
-  `exclude = ["remote"]` to `shared.lock` the way Batocera and Pixelcade do.
+- **Remote access is Batocera's: Cloudflare Tunnel + Access, checked here** (DESIGN §11, Q3,
+  revised 2026-10-24). `serve --http` (the Alpine service, on 127.0.0.1:8716/misterfpga/mcp) runs
+  on shared `remote.py`, which verifies the Access assertion on every request and, without Access,
+  serves only its own machine. The server is the only gate in front of a reboot-capable update and
+  a root SSH key: Access settings go in the env file, `MCP_ALLOWED_EMAILS` is recommended, and the
+  service never runs with `--insecure-no-auth`. `test_http_tools.py` covers the real tools over
+  HTTP; keep it passing. Never tunnel Zaparoo (7497) or SSH directly.
 - `set_ini` denies `MAIN`, `SHARED_FOLDER`, `DEBUG`, `BOOTCORE` and array keys; `LOG_FILE_ENTRY`
   is allowed on purpose (Zaparoo's tracking setup needs it).
 - Raise `MisterError` (a `ToolError`) for anything the model or user can act on; say what to do.

@@ -3,7 +3,8 @@
 An [MCP](https://modelcontextprotocol.io) server for [MiSTer FPGA](https://github.com/MiSTer-devel)
 devices: find and launch games, see what's being played and what's been played most, take
 screenshots, make NFC cards, change `MiSTer.ini` settings (globally or per core), back up saves,
-and start Update All, from Claude Code or Claude Desktop. It talks to each MiSTer through
+and start Update All, from Claude Code, Claude Desktop or, through a Cloudflare Tunnel, the Claude apps
+anywhere. It talks to each MiSTer through
 [Zaparoo Core](https://zaparoo.org)'s API and, for what Zaparoo doesn't cover, SSH. One server
 drives several MiSTers.
 
@@ -82,7 +83,8 @@ claude mcp add misterfpga -- /path/to/.venv/bin/mcp-server-misterfpga     # Clau
 ```
 
 For Claude Desktop, add it to `claude_desktop_config.json` under `mcpServers` with the same
-command. This server is meant to stay on your LAN (see [Local only](#local-only-stdio-or-http-on-loopback)).
+command. To use it from claude.ai or the mobile app too, run it as a service and add it as a connector
+(see [Remote access](#remote-access-stdio-or-http-behind-cloudflare-access)).
 
 ### Tools
 
@@ -167,36 +169,75 @@ modification time) are hard-linked to it, as `rsync --link-dest` does: every sna
 complete on its own, and only changes cost space. A snapshot is written as `.partial` and renamed
 when complete. The newest `backup_keep` (30) are kept. The MiSTer is only read.
 
-## Local only: stdio, or HTTP on loopback
-
-**This server is meant to stay on your LAN.** Unlike its AV siblings (Onkyo, Shield TV, Harmony,
-Sofabaton, webOS), it isn't published through a Cloudflare Tunnel, so it isn't reachable from
-claude.ai or the Claude mobile app. That's on purpose: it can start an update that reboots a
-MiSTer, and its SSH key is root on them.
+## Remote access: stdio, or HTTP behind Cloudflare Access
 
 There are two ways to run it:
 
-- **stdio**, the usual way: Claude Code or Claude Desktop launches it on a machine on your LAN.
-- **`serve --http`**: Streamable HTTP on `127.0.0.1:8716/misterfpga/mcp`, through the `remote.py`
-  it shares with its siblings (Onkyo 8711 … webOS 8715). `deploy/alpine/` runs this as a service.
-  The loopback bind keeps it inside that machine or container; nothing else on the LAN can reach it.
+- **stdio**: Claude Code or Claude Desktop launches it on a machine on your LAN.
+- **`serve --http`**: Streamable HTTP on `127.0.0.1:8716/misterfpga/mcp`, as a long-lived service (see
+  [Service and Cloudflare](#service-and-cloudflare)). Published through a Cloudflare Tunnel with Cloudflare
+  Access in front, it's one URL you add as a connector in Claude Code, Claude Desktop and the mobile app,
+  the same way as its siblings (Onkyo, Shield TV, Harmony, Sofabaton, webOS, Batocera).
 
-Because `serve --http` runs on `remote.py`, this repo keeps mcp-server-shared's `remote` module.
-Batocera and Pixelcade exclude it, but they only ever speak stdio. Here, "LAN-only" means no
-tunnel route, not no HTTP.
+The HTTP transport is `remote.py`, shared byte for byte with those siblings through
+[mcp-server-shared](https://github.com/SDNick484/mcp-server-shared). What sits behind it is more powerful
+than a TV remote: this server can start an update that **reboots a MiSTer**, and its SSH key is **root** on
+them. Zaparoo, on MiSTer, has no authentication either. So the server is the gate, and it doesn't rely on
+Cloudflare's edge alone:
 
-On any address other than loopback, `remote.py` refuses to start without Cloudflare Access, unless
-you pass `--insecure-no-auth`. **Don't use that flag for this server.** It exists for short tests
-on a trusted LAN, and here it would give anything that can reach the port reboot-capable,
-root-over-SSH control of your MiSTers. Its Host and Origin checks block DNS-rebinding from a
-browser, not a direct request.
+- **With Access configured, every request needs a valid Access assertion**, checked here: signature
+  (Access's published keys), the application's audience tag, issuer, expiry, and `MCP_ALLOWED_EMAILS` if
+  set. Anything else gets a plain 403, so a request that reaches the port from the LAN, around the tunnel,
+  is refused too. **Set `MCP_ALLOWED_EMAILS`** to yourself: it keeps that control yours even if the Access
+  policy is later widened for another app.
+- **Without Access, it serves only the machine it runs on.** It won't listen on anything but loopback,
+  won't start with a `--public-host`, and answers 403 to anything a tunnel or proxy forwarded.
+  `--insecure-no-auth` turns that off for a short trusted-LAN test; **never run the service with it**: it
+  would give anything that can reach the port reboot-capable, root-over-SSH control of your MiSTers. Its
+  Host and Origin checks block DNS-rebinding from a browser, not a direct request.
+- **Never expose Zaparoo (7497) or SSH (22) themselves.** Only this server's port goes through the tunnel.
+- What a caller can do is the same over HTTP as over stdio: the [limits below](#what-the-model-cant-do)
+  are in the tools, not the transport. `run_update` still needs `host` and `confirm`, and is rate-limited
+  to once an hour per MiSTer.
 
-`deploy/alpine/` installs it as an OpenRC service (in an Alpine LXC, for example), owned by its
-own user, with the SSH key and `config.json` in `/var/lib/mcp-server-misterfpga` (0700):
+### Service and Cloudflare
+
+`deploy/alpine/` installs it as an OpenRC service on an always-on Alpine machine on the MiSTers' LAN (a
+Proxmox LXC, for example), in the siblings' `deploy/alpine/` layout so they can share a container: owned
+by its own user `mcp-mister`, with the SSH key and `config.json` in `/var/lib/mcp-server-misterfpga`
+(0700), and the HTTP and Access settings in `/etc/mcp-server-misterfpga/env`:
 
 ```sh
 sh deploy/alpine/install.sh        # prints the next steps: key, ssh-copy-id, check, doctor, start
 ```
+
+The service runs `/opt/mcp-server-misterfpga/run.sh` (`serve --http`) under `supervise-daemon` (restarted
+if it exits) as `mcp-mister`, logging to `/var/log/mcp-server-misterfpga/server.log`. Its settings are the
+`MCP_HTTP_*`, `MCP_PUBLIC_HOSTS` and `CF_ACCESS_*` lines in the env file:
+
+| Flag | Variable | Default |
+| --- | --- | --- |
+| `--bind` | `MCP_HTTP_BIND` | `127.0.0.1` |
+| `--port` | `MCP_HTTP_PORT` | `8716` (the siblings use 8711 to 8715, Batocera 8717, Pixelcade 8718) |
+| `--path` | `MCP_HTTP_PATH` | `/misterfpga/mcp` |
+| `--public-host` | `MCP_PUBLIC_HOSTS` | none: only loopback Host headers pass |
+| | `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD` | none: serves only this machine |
+| | `MCP_ALLOWED_EMAILS` | anyone Access lets in (set it) |
+
+To use it as a connector, with cloudflared running on the same machine (keep the `127.0.0.1` bind):
+
+1. **Tunnel route:** a public hostname, say `mcp.example.com`, path `misterfpga/*`, to
+   `http://localhost:8716`. Several servers can share the hostname, one path each.
+2. **Access application** (self-hosted) covering that hostname and path, with a policy for who may use it
+   and Managed OAuth turned on, so Claude's connector can sign in through Access. Note its AUD tag.
+3. **The env file:** `MCP_PUBLIC_HOSTS=mcp.example.com`, `CF_ACCESS_TEAM_DOMAIN=<team>.cloudflareaccess.com`,
+   `CF_ACCESS_AUD=<the AUD tag>`, `MCP_ALLOWED_EMAILS=<you>`, then `rc-service mcp-server-misterfpga restart`.
+4. **The connector:** `https://mcp.example.com/misterfpga/mcp`.
+
+`GET /healthz` answers without auth, for monitoring. Details are in `src/misterfpga_mcp/remote.py`. CI runs
+`deploy/alpine/smoke-test.sh` in a stock `python:3.12-alpine` container: install, the test suite on musl,
+the OpenRC service as its user, an MCP call over HTTP against the simulator, and the Access settings from
+the env file turning the Access check on.
 
 ## Logs
 

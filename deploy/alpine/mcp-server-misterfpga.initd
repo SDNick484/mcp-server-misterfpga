@@ -1,6 +1,6 @@
 #!/sbin/openrc-run
 # OpenRC service for mcp-server-misterfpga (Streamable HTTP), e.g. in an Alpine LXC.
-# Installed as /etc/init.d/mcp-server-misterfpga by install.sh. HTTP settings live in
+# Installed as /etc/init.d/mcp-server-misterfpga by install.sh. HTTP and Cloudflare Access settings live in
 # /etc/mcp-server-misterfpga/env; config.json and the SSH key the server logs in to the
 # MiSTers with live in /var/lib/mcp-server-misterfpga (the service user's own, 0700).
 
