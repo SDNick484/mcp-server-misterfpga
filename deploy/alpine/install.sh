@@ -7,11 +7,12 @@
 # credentials to itself, and change nothing else):
 #   /opt/mcp-server-misterfpga/venv     the code                    root:root            0755
 #   /opt/mcp-server-misterfpga/run.sh   the service command         root:root            0755
-#   /etc/mcp-server-misterfpga/env      HTTP and Access settings    root:mcp-mister      0640
+#   /etc/mcp-server-misterfpga/env      HTTP, Access, MQTT settings root:mcp-mister      0640
 #   /var/lib/mcp-server-misterfpga/     config.json, the SSH key    mcp-mister           0700 / files 0600
 #                                          (MISTERFPGA_CONFIG_DIR)
-#   /var/log/mcp-server-misterfpga/     server.log                  mcp-mister           0750
-#   /etc/init.d/mcp-server-misterfpga   the OpenRC script
+#   /var/log/mcp-server-misterfpga/     server.log, track.log       mcp-mister           0750
+#   /etc/init.d/mcp-server-misterfpga   the OpenRC script (MCP over HTTP)
+#   /etc/init.d/mcp-server-misterfpga-track   the play tracker (MQTT), optional
 # The SSH key is root on your MiSTers, so it belongs to the service user alone.
 # backup_dir (in config.json) must be writable by mcp-mister.
 # Re-running upgrades the code and keeps settings.
@@ -45,6 +46,7 @@ install -d -m 0750 -o root -g "$USER_NAME" "$ETC"
 install -d -m 0700 -o "$USER_NAME" -g "$USER_NAME" "$STATE"
 install -d -m 0750 -o "$USER_NAME" -g "$USER_NAME" /var/log/mcp-server-misterfpga
 install -m 0755 "$HERE/mcp-server-misterfpga.initd" /etc/init.d/mcp-server-misterfpga
+install -m 0755 "$HERE/mcp-server-misterfpga-track.initd" /etc/init.d/mcp-server-misterfpga-track
 
 AS_SERVICE="su -s /bin/sh $USER_NAME -c"
 CMD="MISTERFPGA_CONFIG_DIR=$STATE $PREFIX/venv/bin/mcp-server-misterfpga"
@@ -57,3 +59,5 @@ echo "  $AS_SERVICE '$CMD doctor'"
 echo "  rc-update add mcp-server-misterfpga default && rc-service mcp-server-misterfpga start"
 echo "It listens on 127.0.0.1:8716/misterfpga/mcp. For a Claude connector, see the README's"
 echo "'Service and Cloudflare' section (CF_ACCESS_* and MCP_PUBLIC_HOSTS in $ETC/env)."
+echo "Play tracking in Home Assistant (optional): set MISTERFPGA_MQTT_* in $ETC/env, then"
+echo "  rc-update add mcp-server-misterfpga-track default && rc-service mcp-server-misterfpga-track start"

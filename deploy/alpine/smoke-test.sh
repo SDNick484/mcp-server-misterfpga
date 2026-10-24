@@ -89,6 +89,13 @@ for _ in $(seq 50); do curl -fsS http://127.0.0.1:8716/healthz && break; sleep 0
 code=$(curl -sS -o /dev/null -w '%{http_code}' $H "$URL" -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')
 [ "$code" = 403 ]
 
+STEP='track service'
+# Installed, and refuses cleanly without a broker configured (it needs MISTERFPGA_MQTT_HOST;
+# tests/test_track.py drives it against a fake broker). Proves run.sh passes the subcommand.
+[ -x /etc/init.d/mcp-server-misterfpga-track ]
+out=$(su -s /bin/sh mcp-mister -c '/opt/mcp-server-misterfpga/run.sh track' 2>&1) && false
+echo "$out" | grep -q 'MISTERFPGA_MQTT_HOST'
+
 STEP='service stop'
 rc-service mcp-server-misterfpga stop
 cat /var/log/mcp-server-misterfpga/server.log

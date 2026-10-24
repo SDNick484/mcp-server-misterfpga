@@ -178,3 +178,22 @@ configured, run `call search_games query=<a game on both>`. It should come back 
 refs. `call launch system=SNES` without `host` should be refused, naming both.
 
 - Confirms **H-SS1**.
+
+## 13. Play tracking in Home Assistant
+
+With the `track` service running (README, "Play tracking in Home Assistant"), check Home Assistant's
+MQTT integration: one device per MiSTer, e.g. *Office MiSTer Pi*, with the entities listed there.
+
+1. Launch a game from the MiSTer's menu. *Activity* turns `playing`, *Now playing* shows it, and the
+   *Game session* entity fires `session_start`.
+2. Play past `MISTERFPGA_MIN_SESSION_SECONDS`, then quit. *Last played* shows it with a length close
+   to what you played, and `session_end` fires.
+3. Stop the service (`rc-service mcp-server-misterfpga-track stop`), play and quit another game,
+   start it again. Within seconds that game becomes *Last played* and a `session_end` fires for it,
+   once. Restart the service again: nothing new fires (it isn't logged twice).
+4. While a game runs, restart the service: *Now playing* stays on the game and no second
+   `session_start` fires.
+
+- Steps 3 and 4 confirm **Z-SESSION-TIMES** (the live session and the history entry are recognized as
+  one) and, again, **Z-HISTORY**. Turn the MiSTer off: its entities go unavailable and *Activity*
+  reads `off`.

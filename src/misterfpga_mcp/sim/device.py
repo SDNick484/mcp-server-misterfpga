@@ -140,8 +140,26 @@ class FakeDevice:
         self.active = None
 
     def to_menu(self) -> dict[str, Any] | None:
+        """Back to the menu. A game that was running becomes a history entry, as Zaparoo records it."""
         stopped, self.active, self.core = self.active, None, MENU
+        if stopped:
+            self.history.insert(0, self.session_record(stopped, datetime.now(UTC)))
         return stopped
+
+    @staticmethod
+    def session_record(active: dict[str, Any], ended: datetime) -> dict[str, Any]:
+        """A media.history entry for a session of `active` that ended at `ended` (ASSUMPTION Z-HISTORY)."""
+        started = datetime.fromisoformat(active["started"])
+        return {
+            **{k: active[k] for k in ("mediaId", "systemId", "systemName", "mediaName", "mediaPath", "launcherId")},
+            "zapScript": active.get("zapScript", ""),
+            "hasCover": False,
+            "startedAt": active["started"],
+            "endedAt": ended.isoformat(timespec="seconds"),
+            "playTime": max(0, int((ended - started).total_seconds())),
+            "sessionSource": "active_media",
+            "sessionConfidence": "exact",
+        }
 
     def scan(self, uid: str, text: str = "") -> dict[str, Any]:
         token = {"type": "nfc", "uid": uid, "text": text, "data": "", "scanTime": now(), "readerId": "pn532-sim"}

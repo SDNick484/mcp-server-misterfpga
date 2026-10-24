@@ -24,6 +24,7 @@ dependencies = [
     "typing_extensions>=4.7",
     "pyjwt[crypto]>=2.10",   # verifying Cloudflare Access assertions (remote.py)
     "uvicorn>=0.31",         # the HTTP transport (remote.py)
+    "aiomqtt>=2.3",          # the play tracker's MQTT connection to Home Assistant (track.py)
 ]
 
 [project.urls]

@@ -632,3 +632,25 @@ The build follows this design. Where the code differs, this is where, and why:
     `--insecure-no-auth` stays forbidden for the service.
   - `open_world_hint` stays `False`. It describes what a tool reaches (two MiSTers on the LAN, a
     closed set), not who may call it.
+- **Play tracking built (§10, 2026-10-24),** with these differences from the design, mostly from
+  following Batocera's playtracker as it now stands (`4200b40`: activity, screensaver and cabinet
+  events):
+  - **Attract mode is deferred.** No SAM check at `media.started` and no live sensor yet, so
+    SAM's demo sessions are logged like real play. When it lands: an `attract` value in Activity
+    (Batocera's `screensaver`), and `source = "attract"` sessions not logged.
+  - **Activity** (`menu`, `playing`, `off`) is Batocera's enum minus the screensaver. It has only
+    the tracker's availability, so a switched-off MiSTer reads `off`, not *unavailable*.
+  - **No Cabinet event entity.** Zaparoo has no power events; a reboot and a power-off both look
+    like a dropped connection, which `status` and Activity already show.
+  - **A real last will.** The tracker holds one MQTT connection (`aiomqtt`, chosen over porting
+    Batocera's stdlib publisher because the LXC can pip-install and the server is asyncio already),
+    so `misterfpga/_tracker/status` goes offline if it dies; on a clean stop it publishes that
+    itself. Entities use both statuses (`availability_mode: all`).
+  - **Times on the MiSTer's clock.** `started` from `media.active`, length from `elapsed`, `ended`
+    = started + length (new assumption `Z-SESSION-TIMES`). Catch-up compares against Zaparoo's
+    history, which is on that clock too, so an LXC with a different clock can't double-log.
+  - **First run doesn't backfill.** With no `track-state.json`, the newest history entry becomes
+    `last_session` (no event) and catch-up starts there.
+  - The simulator now records a history entry when a game ends and reports a real `elapsed`, and
+    `FakeZaparoo.play` / `quit_game` stand in for the MiSTer's own menu (`Z-TRACKS-MENU`).
+
