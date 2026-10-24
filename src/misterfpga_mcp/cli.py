@@ -1,9 +1,10 @@
 """Entry point: `mcp-server-misterfpga [serve|check|call|doctor|simulate]`.
 
 serve      speak MCP: stdio by default (the client launches it), or --http for
-           a long-lived service (remote.py). This server is meant to stay on
-           your LAN (docs/DESIGN.md §11). --dry-run reads the MiSTers but
-           changes nothing.
+           a long-lived service (remote.py): this machine only, or published
+           through a Cloudflare Tunnel behind Cloudflare Access, which it checks
+           on every request (docs/DESIGN.md §11). --dry-run reads the MiSTers
+           but changes nothing.
 check      first contact with one MiSTer: confirm Zaparoo answers, and with
            --ssh, show its SSH host key fingerprint, pin it once you confirm,
            and test the login. Saves the MiSTer to config.json.

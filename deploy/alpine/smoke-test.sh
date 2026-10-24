@@ -2,7 +2,9 @@
 # CI: install and run the service in a stock python:3.12-alpine container,
 # against two simulated MiSTers. Proves the dependencies install on musl
 # (aiohttp, asyncssh/cryptography, pydantic-core), the install layout and
-# permissions, and that OpenRC starts and stops it.
+# permissions, that OpenRC starts and stops it, that an MCP call over HTTP
+# reaches the MiSTers, and that Access settings in the env file turn the
+# Access check on.
 #   docker run --rm -v "$PWD:/src" -w /src python:3.12-alpine sh deploy/alpine/smoke-test.sh
 set -eux
 
@@ -55,6 +57,37 @@ STEP='file modes'
 [ "$(stat -c '%a %U' $STATE/config.json)" = "600 mcp-mister" ]
 STEP='doctor'
 su -s /bin/sh mcp-mister -c "MISTERFPGA_CONFIG_DIR=$STATE $BIN doctor --timeout 2"
+
+STEP='mcp over http'
+# A real MCP session against the service: initialize, then get_status, which must
+# reach the simulated MiSTers (structuredContent is compact JSON: no spaces).
+URL=http://127.0.0.1:8716/misterfpga/mcp
+H='-H Content-Type:application/json -H Accept:application/json,text/event-stream'
+# shellcheck disable=SC2086
+SID=$(curl -fsS -D - -o /dev/null $H "$URL" -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"smoke","version":"0"}}}' \
+	| tr -d '\r' | awk -F': ' 'tolower($1)=="mcp-session-id" {print $2}')
+[ -n "$SID" ]
+# shellcheck disable=SC2086
+curl -fsS $H -H "mcp-session-id: $SID" "$URL" -d '{"jsonrpc":"2.0","method":"notifications/initialized"}' >/dev/null
+# shellcheck disable=SC2086
+out=$(curl -fsS $H -H "mcp-session-id: $SID" "$URL" -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_status","arguments":{}}}')
+echo "$out" | tail -c 600
+echo "$out" | grep -q '"reachable":true'
+
+STEP='access from the env file'
+# With CF_ACCESS_* in the env file, a request without an Access assertion is refused
+# (nothing here can sign one: tests/test_http_tools.py covers valid ones), and the
+# health check still answers, before auth.
+cat >>/etc/mcp-server-misterfpga/env <<'ENV'
+MCP_PUBLIC_HOSTS=mcp.example.com
+CF_ACCESS_TEAM_DOMAIN=example.cloudflareaccess.com
+CF_ACCESS_AUD=smoke-test-aud
+ENV
+rc-service mcp-server-misterfpga restart
+for _ in $(seq 50); do curl -fsS http://127.0.0.1:8716/healthz && break; sleep 0.2; done
+# shellcheck disable=SC2086
+code=$(curl -sS -o /dev/null -w '%{http_code}' $H "$URL" -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')
+[ "$code" = 403 ]
 
 STEP='service stop'
 rc-service mcp-server-misterfpga stop
