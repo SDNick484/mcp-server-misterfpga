@@ -4,8 +4,10 @@ Shared by the sibling servers, byte for byte. Change it in mcp-server-shared,
 not in a copy, then sync (`python scripts/sync_shared.py --update`).
 
 mcp-server-shared is the single source of truth for code the siblings each
-carry a copy of. Its shared.toml lists those files. Each sibling's shared.lock
-pins the mcp-server-shared commit its copies come from and names its package:
+carry a copy of. Its shared.toml lists those files, grouped into modules. Each
+sibling's shared.lock pins the mcp-server-shared commit its copies come from,
+names its package, and can exclude modules it doesn't use (a server that only
+speaks stdio has no use for remote.py):
 
     python scripts/sync_shared.py                   write the files as of the locked commit
     python scripts/sync_shared.py --update          move the lock to mcp-server-shared main, then write
@@ -35,6 +37,11 @@ Why it works the way it does:
   that up). Raw files are fetched anonymously because raw.githubusercontent.com
   answers 404 to a token that can't see the repo, even a public one, and a
   workflow's own token is scoped to its own repo, not to mcp-server-shared.
+- Siblings opt out of a module (`exclude = ["remote"]`) rather than opt in, so
+  a newly shared module reaches every sibling by default, and a sibling that
+  doesn't want it says so on purpose. Exclusion is by module, not by path, so
+  a module's code and its test can't be split by accident. An excluded module's
+  files are left alone: the script neither writes nor deletes them.
 """
 
 from __future__ import annotations
@@ -57,7 +64,11 @@ PLACEHOLDER = "__PKG__"
 MANIFEST = "shared.toml"
 LOCK = "shared.lock"
 SELF = "scripts/sync_shared.py"  # where this script lives, in mcp-server-shared and in every sibling
-FORMAT = 1  # the newest shared.toml format this script understands
+# The newest shared.toml format this script understands. 2 added `module` on [[file]] and, with
+# it, `exclude` in shared.lock. A format-1 script ignores both, and its --update would rewrite the
+# lock without `exclude`, quietly bringing excluded files back; the bump makes it fetch this
+# script first instead (see wanted_files).
+FORMAT = 2
 DEFAULT_REPO = "SDNick484/mcp-server-shared"
 TOKEN_HOSTS = ("api.github.com",)  # see the docstring for why raw.githubusercontent.com isn't here
 TIMEOUT = 30.0
@@ -70,7 +81,8 @@ _PACKAGE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 LOCK_HEADER = """\
 # Which mcp-server-shared commit this repo's shared files come from, and this
 # repo's package name (it replaces __PKG__). Written by
-# `python scripts/sync_shared.py --update`; see that script.
+# `python scripts/sync_shared.py --update`; see that script. An optional
+# `exclude = ["remote"]` names shared modules this repo doesn't take.
 """
 
 
@@ -84,6 +96,7 @@ class Lock:
     repo: str
     commit: str
     package: str
+    exclude: tuple[str, ...] = ()  # shared modules this repo doesn't take
 
     def validate(self) -> Lock:
         if not _REPO.fullmatch(self.repo):
@@ -92,10 +105,16 @@ class Lock:
             raise SyncError(f"{LOCK}: commit must be a full 40-character SHA (got {self.commit!r})")
         if not _PACKAGE.fullmatch(self.package):
             raise SyncError(f"{LOCK}: package must be a Python identifier (got {self.package!r})")
+        for name in self.exclude:
+            if not _PACKAGE.fullmatch(name):
+                raise SyncError(f'{LOCK}: exclude must list module names like "remote" (got {name!r})')
         return self
 
     def dump(self) -> str:
-        return f'{LOCK_HEADER}repo = "{self.repo}"\ncommit = "{self.commit}"\npackage = "{self.package}"\n'
+        text = f'{LOCK_HEADER}repo = "{self.repo}"\ncommit = "{self.commit}"\npackage = "{self.package}"\n'
+        if self.exclude:
+            text += "exclude = [" + ", ".join(f'"{name}"' for name in self.exclude) + "]\n"
+        return text
 
 
 def read_lock(root: Path) -> Lock:
@@ -106,8 +125,16 @@ def read_lock(root: Path) -> Lock:
         raise SyncError(f"no {LOCK} in {root}; see mcp-server-shared's README for how to add one") from None
     except tomllib.TOMLDecodeError as exc:
         raise SyncError(f"{LOCK} isn't valid TOML: {exc}") from None
+    exclude = data.get("exclude", [])
+    if not isinstance(exclude, list) or not all(isinstance(name, str) for name in exclude):
+        raise SyncError(f'{LOCK}: exclude must be a list of module names, like ["remote"] (got {exclude!r})')
     try:
-        lock = Lock(str(data.get("repo", DEFAULT_REPO)), str(data["commit"]), str(data["package"]))
+        lock = Lock(
+            str(data.get("repo", DEFAULT_REPO)),
+            str(data["commit"]),
+            str(data["package"]),
+            tuple(dict.fromkeys(exclude)),  # drop repeats, keep the order written
+        )
     except KeyError as exc:
         raise SyncError(f"{LOCK} is missing {exc.args[0]!r}") from None
     return lock.validate()
@@ -184,6 +211,7 @@ class Entry:
     source: str
     target: str
     render: bool
+    module: str | None  # the group a sibling can exclude; None means every sibling takes it (the script)
 
 
 def _relative(path: object, field: str) -> str:
@@ -211,16 +239,22 @@ def parse_manifest(raw: bytes) -> tuple[int, list[Entry]]:
         render = item.get("render", False)
         if not isinstance(render, bool):
             raise SyncError(f"{MANIFEST}: render must be true or false (got {render!r})")
-        entries.append(Entry(_relative(item.get("source"), "source"), _relative(item.get("target"), "target"), render))
+        module = item.get("module")
+        if module is not None and not (isinstance(module, str) and _PACKAGE.fullmatch(module)):
+            raise SyncError(f'{MANIFEST}: module must be a name like "remote" (got {module!r})')
+        source, target = _relative(item.get("source"), "source"), _relative(item.get("target"), "target")
+        entries.append(Entry(source, target, render, module))
     targets = [e.target for e in entries]
     if len(set(targets)) != len(targets):
         raise SyncError(f"{MANIFEST}: two entries write the same target")
     return fmt, entries
 
 
-def wanted_files(source: Source, package: str, *, writing: bool, root: Path) -> dict[str, bytes]:
-    """Every shared file's target path and the exact bytes it should hold. Nothing is written here,
-    except in one case: a manifest newer than this script (see below)."""
+def wanted_files(
+    source: Source, package: str, *, writing: bool, root: Path, exclude: tuple[str, ...] = ()
+) -> dict[str, bytes]:
+    """Every shared file's target path and the exact bytes it should hold, minus excluded modules.
+    Nothing is written here, except in one case: a manifest newer than this script (see below)."""
     fmt, entries = parse_manifest(source.read(MANIFEST))
     if fmt > FORMAT:
         # A newer script is needed to read this manifest, and the script is itself shared: fetch
@@ -233,8 +267,19 @@ def wanted_files(source: Source, package: str, *, writing: bool, root: Path) -> 
         (root / SELF).parent.mkdir(parents=True, exist_ok=True)
         (root / SELF).write_bytes(source.read(SELF))
         raise SyncError(f"Updated {SELF} for {MANIFEST} format {fmt}. Run the same command again.")
+    # A typo ("remot") would otherwise exclude nothing, silently. So would a module that was renamed
+    # or dropped in mcp-server-shared: then this lock's exclude is out of date and should say so.
+    modules = sorted({e.module for e in entries if e.module})
+    unknown = [name for name in exclude if name not in modules]
+    if unknown:
+        raise SyncError(
+            f"{LOCK} excludes {', '.join(map(repr, unknown))}, but {MANIFEST} in {source.label} has no such module "
+            f"(it has: {', '.join(modules) or 'none'})"
+        )
     files: dict[str, bytes] = {}
     for entry in entries:
+        if entry.module in exclude:
+            continue
         content = source.read(entry.source)
         if entry.render:
             try:
@@ -348,53 +393,64 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     return args
 
 
+def _excluding(exclude: tuple[str, ...]) -> str:
+    return f" (excluding {', '.join(exclude)}, per {LOCK})" if exclude else ""
+
+
 def run(args: argparse.Namespace) -> int:
     root: Path = args.root
 
     if args.source:
-        package = args.package or read_lock(root).package
+        # mcp-server-shared itself renders its tests with --package and has no lock; a sibling
+        # trying out a local change does have one, and its exclude list still applies.
+        lock_or_none = read_lock(root) if (root / LOCK).exists() or not args.package else None
+        package = args.package or (lock_or_none.package if lock_or_none else "")
+        exclude = lock_or_none.exclude if lock_or_none else ()
         local = LocalDir(args.source.resolve())
-        files = wanted_files(local, package, writing=not args.check, root=root)
+        files = wanted_files(local, package, writing=not args.check, root=root, exclude=exclude)
+        label = local.label + _excluding(exclude)
         if args.check:
-            return report(root, files, local.label, f"python scripts/sync_shared.py --source {args.source}")
+            return report(root, files, label, f"python scripts/sync_shared.py --source {args.source}")
         changed = write_files(root, files)
-        print(f"synced from {local.label}: " + (", ".join(changed) if changed else "nothing to change"))
+        print(f"synced from {label}: " + (", ".join(changed) if changed else "nothing to change"))
         return 0
 
     lock = read_lock(root)
     package = args.package or lock.package
+    exclude = lock.exclude
 
     if args.check:
         if args.latest:
             main = resolve_main(lock.repo)
             latest = GitHub(lock.repo, main, "main")
-            files = wanted_files(latest, package, writing=False, root=root)
-            status = report(root, files, latest.label, "python scripts/sync_shared.py --update")
+            files = wanted_files(latest, package, writing=False, root=root, exclude=exclude)
+            status = report(root, files, latest.label + _excluding(exclude), "python scripts/sync_shared.py --update")
             if status == 0 and main != lock.commit:
                 # Nothing shared changed between the lock and main (a README edit, say), so this
                 # repo isn't behind in any way that matters; --update would only move the lock.
                 print(f"(shared.lock is at {lock.commit[:7]}, main at {main[:7]}, with no shared file changed)")
             return status
         source = GitHub(lock.repo, lock.commit, "locked")
-        files = wanted_files(source, package, writing=False, root=root)
-        return report(root, files, source.label, "python scripts/sync_shared.py")
+        files = wanted_files(source, package, writing=False, root=root, exclude=exclude)
+        return report(root, files, source.label + _excluding(exclude), "python scripts/sync_shared.py")
 
     if args.update:
         main = resolve_main(lock.repo)
         source = GitHub(lock.repo, main, "main")
-        files = wanted_files(source, package, writing=True, root=root)
+        files = wanted_files(source, package, writing=True, root=root, exclude=exclude)
         changed = write_files(root, files)
-        new_lock = Lock(lock.repo, main, lock.package)
+        new_lock = Lock(lock.repo, main, lock.package, lock.exclude)  # exclude carries over unchanged
         if new_lock != lock:
             (root / LOCK).write_text(new_lock.dump(), encoding="utf-8")  # last: only once every file is in
         moved = f"{lock.commit[:7]} -> {main[:7]}" if main != lock.commit else f"already at {main[:7]}"
-        print(f"shared.lock: {moved}; " + (", ".join(changed) if changed else "no files changed"))
+        print(f"shared.lock: {moved}{_excluding(exclude)}; " + (", ".join(changed) if changed else "no files changed"))
         return 0
 
     source = GitHub(lock.repo, lock.commit, "locked")
-    files = wanted_files(source, package, writing=True, root=root)
+    files = wanted_files(source, package, writing=True, root=root, exclude=exclude)
     changed = write_files(root, files)
-    print(f"synced from {source.label}: " + (", ".join(changed) if changed else "nothing to change"))
+    label = source.label + _excluding(exclude)
+    print(f"synced from {label}: " + (", ".join(changed) if changed else "nothing to change"))
     return 0
 
 
