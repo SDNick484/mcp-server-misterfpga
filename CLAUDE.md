@@ -30,23 +30,31 @@ software/systems engineer: be technical and concrete, with specific examples.
   `ratelimit.py`)
 - `src/misterfpga_mcp/assumptions.py`: every unverified protocol claim (id, source, confidence,
   status)
+- `src/misterfpga_mcp/track.py`: the play tracker (`track`, DESIGN §10): `HostTracker` (pure
+  session logic, clock injected), `discovery_messages` (Batocera playtracker's entities), `Outbox`
+  (latest retained states + waiting `session_end`s), `deliver` (aiomqtt, last will, reconnect),
+  `Tracker` (one Zaparoo connection and event queue per MiSTer). Catch-up reads `media.history`
+  back to the mark in `track-state.json`
 - `src/misterfpga_mcp/doctor.py`, `cli.py`: `serve` (default), `check`, `call`, `doctor`,
-  `simulate`
+  `track`, `simulate`
 - `src/misterfpga_mcp/sim/`: `FakeDevice` (shared state), `FakeZaparoo` (aiohttp, real JSON-RPC),
   `FakeMister` (asyncssh, real SSH/SFTP chrooted to a folder), `harness.Simulation`, fixtures
   (`office` = MiSTer Pi, `family_room` = SuperStation One; *Super Metroid* on both on purpose).
-  Used by tests *and* `simulate`
+  `FakeZaparoo.play` / `quit_game` act like the MiSTer's own menu; quitting writes a history
+  entry. Used by tests *and* `simulate`
 - Shared with the siblings via mcp-server-shared (pinned by `shared.lock`):
   `remote.py`, `logsafe.py`, `tasks.py`, `ratelimit.py`, `tests/test_{remote,logsafe,tasks,ratelimit}.py`,
   `scripts/sync_shared.py`. **Never edit them here**; change mcp-server-shared, then
   `python scripts/sync_shared.py --update`. CI's `shared-drift` job enforces it.
-- `deploy/alpine/`: OpenRC service (user `mcp-mister`, port 8716; HTTP and Access settings in
-  `/etc/mcp-server-misterfpga/env`), install and smoke test (which drives the service over HTTP)
+- `deploy/alpine/`: OpenRC services (user `mcp-mister`): `mcp-server-misterfpga` (MCP over HTTP,
+  port 8716) and `mcp-server-misterfpga-track` (`run.sh track`); HTTP, Access and MQTT settings in
+  `/etc/mcp-server-misterfpga/env`. Install and smoke test (which drives the service over HTTP)
 - `tests/`: `conftest.py` (`sim`, `configured`, `mcp_client`), `test_tools` (contract and
   behavior through an in-process MCP `Client`), `test_safety`, `test_ini`, `test_backup`,
   `test_nfc`, `test_zaparoo`, `test_config`, `test_cli` and `test_stdio` (subprocesses),
   `test_http_tools` (these tools over HTTP with signed Access assertions; `test_remote` is the
-  shared transport test),
+  shared transport test), `test_track` (session logic, then the real tracker against the
+  simulator and an asyncio `FakeBroker`),
   `test_recorded` (replays `doctor --dump` captures), `test_assumptions`. Async tests use anyio's
   plugin.
 
@@ -75,6 +83,11 @@ software/systems engineer: be technical and concrete, with specific examples.
   a root SSH key: Access settings go in the env file, `MCP_ALLOWED_EMAILS` is recommended, and the
   service never runs with `--insecure-no-auth`. `test_http_tools.py` covers the real tools over
   HTTP; keep it passing. Never tunnel Zaparoo (7497) or SSH directly.
+- **The tracker publishes Batocera's shapes.** Topics, payload keys and HA entities match
+  mcp-server-batocera's playtracker (plus `host`, `device`), so one automation covers all three
+  devices; change them together or not at all. It only *reads* Zaparoo (`media.active`,
+  `media.history`, notifications): no new methods on the allow-list. A late `session_start` is
+  dropped, `session_end` waits (Batocera's outbox rule). Session times are the MiSTer's clock.
 - `set_ini` denies `MAIN`, `SHARED_FOLDER`, `DEBUG`, `BOOTCORE` and array keys; `LOG_FILE_ENTRY`
   is allowed on purpose (Zaparoo's tracking setup needs it).
 - Raise `MisterError` (a `ToolError`) for anything the model or user can act on; say what to do.
@@ -98,9 +111,9 @@ software/systems engineer: be technical and concrete, with specific examples.
 
 ## Status
 
-Verified against the simulator only. HARDWARE_VALIDATION.md is the checklist. Phase 2 (designed,
-not built): a `track` subcommand that turns Zaparoo's `media.started`/`stopped` into Batocera-shaped
-MQTT play sessions (DESIGN §10).
+Verified against the simulator only. HARDWARE_VALIDATION.md is the checklist. Phase 2, the
+`track` play tracker (DESIGN §10), is built; attract-mode (SAM) detection is not yet: SAM's demo
+games are logged like real play until it is.
 
 ## Commands
 
@@ -108,5 +121,6 @@ MQTT play sessions (DESIGN §10).
 pip install -e ".[dev]" && pytest && ruff check . && ruff format --check . && mypy
 mcp-server-misterfpga simulate          # two fake MiSTers; prints the export line for another terminal
 mcp-server-misterfpga check --host <ip> [--ssh --ssh-key K] | doctor | call <tool> k=v | serve [--http]
+MISTERFPGA_MQTT_HOST=<broker> mcp-server-misterfpga track   # the play tracker (MISTERFPGA_MQTT_*)
 python scripts/sync_shared.py --check   # shared files match shared.lock
 ```

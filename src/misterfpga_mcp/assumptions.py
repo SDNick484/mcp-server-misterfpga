@@ -106,6 +106,13 @@ ASSUMPTIONS: tuple[Assumption, ...] = (
         "medium",
     ),
     Assumption(
+        "Z-SESSION-TIMES",
+        "For one play session, media.active's started and the media.history entry's startedAt are the same "
+        "instant (RFC 3339, the MiSTer's clock), within a minute; history's playTime is seconds played.",
+        "zaparoo-core docs/api/methods.md, media.active and media.history (one session record behind both)",
+        "medium",
+    ),
+    Assumption(
         "Z-SCREENSHOT",
         "screenshot returns {path, data (base64 PNG), size} on MiSTer and saves the file under /media/fat/screenshots.",
         "zaparoo-core docs/api/methods.md, screenshot",

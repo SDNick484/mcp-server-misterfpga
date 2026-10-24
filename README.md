@@ -6,7 +6,8 @@ screenshots, make NFC cards, change `MiSTer.ini` settings (globally or per core)
 and start Update All, from Claude Code, Claude Desktop or, through a Cloudflare Tunnel, the Claude apps
 anywhere. It talks to each MiSTer through
 [Zaparoo Core](https://zaparoo.org)'s API and, for what Zaparoo doesn't cover, SSH. One server
-drives several MiSTers.
+drives several MiSTers, and a companion service publishes what each one plays to Home
+Assistant over MQTT ([Play tracking](#play-tracking-in-home-assistant)).
 
 A sibling of [mcp-server-harmony](https://github.com/SDNick484/mcp-server-harmony),
 [mcp-server-sofabaton](https://github.com/SDNick484/mcp-server-sofabaton),
@@ -169,6 +170,84 @@ modification time) are hard-linked to it, as `rsync --link-dest` does: every sna
 complete on its own, and only changes cost space. A snapshot is written as `.partial` and renamed
 when complete. The newest `backup_keep` (30) are kept. The MiSTer is only read.
 
+## Play tracking in Home Assistant
+
+`mcp-server-misterfpga track` publishes what each MiSTer plays to Home Assistant over MQTT, with
+the same entities and payloads as
+[mcp-server-batocera](https://github.com/SDNick484/mcp-server-batocera)'s playtracker, so one
+automation or dashboard card covers the arcade and both MiSTers. It runs as a second service next
+to the MCP server, not on the MiSTer: Zaparoo already pushes `media.started` / `media.stopped`
+over the network, so nothing goes on the SD card and a reflash can't lose it. It covers games
+launched any way: from the MiSTer's menu, an NFC card, the Zaparoo app, or `launch`.
+
+### What gets logged
+
+- A **session** is a game from start to quit. Sessions under `MISTERFPGA_MIN_SESSION_SECONDS`
+  (default 60) aren't logged.
+- **Missed sessions are caught up.** If the tracker or a MiSTer's connection was down, it reads
+  Zaparoo's own play history on reconnect and publishes what it missed, back to the last session it
+  published (kept in `/var/lib/mcp-server-misterfpga/track-state.json`). The very first run starts
+  from now instead of replaying all of Zaparoo's history.
+- A session's `started` comes from the MiSTer, and its length from Zaparoo's own count, so they
+  agree with `play_history`.
+- **Not yet: attract mode.** MiSTer Super Attract Mode's demo games are real launches, so until
+  attract detection lands they're logged like any other session over the minimum length.
+
+### Install
+
+1. In Home Assistant, create a user for it (*Settings > People > Users*, e.g. `misterfpga`). The
+   Mosquitto add-on accepts Home Assistant users.
+2. In `/etc/mcp-server-misterfpga/env` (see [Service and Cloudflare](#service-and-cloudflare)), set
+   `MISTERFPGA_MQTT_HOST`, `_USER` and `_PASSWORD`. The file is readable by the service user only.
+3. Start it: `rc-update add mcp-server-misterfpga-track default && rc-service mcp-server-misterfpga-track start`.
+   It logs to `/var/log/mcp-server-misterfpga/track.log`.
+
+A device per MiSTer appears in Home Assistant under MQTT, named from its name and model: *Office
+MiSTer Pi*, *Family Room SuperStation One*.
+
+### Entities
+
+For a MiSTer named Office with model MiSTer Pi (check the device page for the exact IDs):
+
+| Entity | State | Attributes |
+| --- | --- | --- |
+| `sensor.office_mister_pi_now_playing` | game name, or `Idle` | system, rom, started, source, host, device |
+| `binary_sensor.office_mister_pi_playing` | on while a game runs | |
+| `sensor.office_mister_pi_now_playing_system` | system id (`SNES`) | |
+| `sensor.office_mister_pi_last_played` | last game logged | system, rom, started, ended, duration_s, host, device |
+| `sensor.office_mister_pi_last_session_length` | minutes | |
+| `event.office_mister_pi_game_session` | `session_start`, `session_end` | game, system, rom, source, started (+ ended, duration_s at the end), host, device |
+| `sensor.office_mister_pi_activity` | `menu`, `playing`, `off` | |
+| availability | `misterfpga/<mister>/status` and `misterfpga/_tracker/status` | |
+
+**For automations** (lights when a game starts), use *Activity*. It follows only the tracker, so
+when a MiSTer is switched off it reads `off` rather than *unavailable*. `menu` means no game is
+running; a core opened without a game (say, ao486) also reads `menu`. The other entities go
+*unavailable* when either the MiSTer or the tracker is gone, so a stale "playing" never shows.
+
+Topics are `misterfpga/<mister>/now_playing` (retained), `last_session` (retained), `session`
+(events), `activity` (retained) and `status`, where `<mister>` is the name in lower case
+(`family_room`). Unlike Batocera's script, the tracker keeps its broker connection open, so its MQTT
+last will marks everything unavailable if it dies. There's no equivalent of Batocera's *Cabinet*
+event: Zaparoo has no power events, and a MiSTer rebooting looks the same as one switched off.
+
+If the broker is unreachable (Home Assistant restarting, say), the latest state of each entity is
+sent when it's back, along with logged sessions; a `session_start` that would arrive late is
+dropped, so its automation doesn't fire at the wrong time (Batocera's rule).
+
+Daily play time on one MiSTer:
+
+```yaml
+sensor:
+  - platform: history_stats
+    name: Office MiSTer play time today
+    entity_id: binary_sensor.office_mister_pi_playing
+    state: "on"
+    type: time
+    start: "{{ today_at() }}"
+    end: "{{ now() }}"
+```
+
 ## Remote access: stdio, or HTTP behind Cloudflare Access
 
 There are two ways to run it:
@@ -260,6 +339,9 @@ changes what `/tmp/CORENAME` says over SSH. The server's real clients connect to
 MiSTers on 127.0.0.1 and 127.0.0.2: Office (a MiSTer Pi) and Family Room (a SuperStation One),
 with *Super Metroid* on both on purpose.
 
+`tests/test_track.py` runs the play tracker against the same simulator and a small fake MQTT
+broker: menu launches, outages, catching up after a restart, a broker restart.
+
 `doctor --dump DIR` records a real MiSTer's read-only Zaparoo answers (redacted); put them in
 `tests/fixtures/recorded/` and `test_recorded.py` replays them through the tools.
 
@@ -287,6 +369,7 @@ HARDWARE_VALIDATION.md says which step confirms each.
 | `Z-TRACKS-MENU` | medium | simulator-only | menu launches are tracked too (with `recents=1`, `log_file_entry=1`) |
 | `Z-NOTIFY` | high | simulator-only | `media.started` / `media.stopped` payloads |
 | `Z-HISTORY` | medium | simulator-only | play history includes menu launches |
+| `Z-SESSION-TIMES` | medium | simulator-only | a session's live start and its history entry agree (the tracker's catch-up) |
 | `Z-SCREENSHOT` | high | simulator-only | `screenshot` returns a base64 PNG and where it was saved |
 | `Z-NFC` | medium | simulator-only | `readers.write` waits for a card; UIDs are normalized; scans show in `tokens` |
 | `Z-SCRIPT` | low | simulator-only | `**mister.script:update_all.sh` runs Update All on screen |

@@ -95,6 +95,28 @@ class FakeZaparoo:
             if not ws.closed:
                 await ws.send_str(frame)
 
+    async def play(self, media_id: int) -> None:
+        """Someone picks a game from the MiSTer's own menu; Zaparoo notices (ASSUMPTION Z-TRACKS-MENU)."""
+        media = self.device.by_id(media_id)
+        if media is None:
+            raise KeyError(media_id)
+        active = self.device.start_game(media)
+        await self.notify(  # ASSUMPTION Z-NOTIFY: the documented payload
+            "media.started", {k: active[k] for k in ("systemId", "systemName", "mediaPath", "mediaName")}
+        )
+
+    async def quit_game(self) -> None:
+        """Back to the menu (Zaparoo's stop, or the player quitting); recorded in history, then notified."""
+        stopped = self.device.to_menu()
+        if stopped:
+            await self.notify(
+                "media.stopped",
+                {
+                    **{k: stopped[k] for k in ("systemId", "systemName", "mediaName", "mediaPath", "launcherId")},
+                    "elapsed": self.device.history[0]["playTime"],  # ASSUMPTION Z-NOTIFY: seconds played
+                },
+            )
+
     async def scan_card(self, uid: str) -> None:
         token = self.device.scan(uid)
         await self.notify("tokens.added", token)
@@ -210,15 +232,7 @@ class FakeZaparoo:
         if method == "run":
             return await self._run(str(p.get("text") or ""))
         if method == "stop":
-            stopped = d.to_menu()
-            if stopped:
-                await self.notify(
-                    "media.stopped",
-                    {
-                        **{k: stopped[k] for k in ("systemId", "systemName", "mediaName", "mediaPath", "launcherId")},
-                        "elapsed": 42,
-                    },
-                )
+            await self.quit_game()
             return None
         if method == "screenshot":
             data = tiny_png()

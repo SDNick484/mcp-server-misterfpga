@@ -13,6 +13,8 @@ call       call one tool exactly as the model would (through an in-process MCP
            result: `call launch game="Family Room/4812"`; `call tools`.
 doctor     check each MiSTer layer by layer and say what failed (doctor.py);
            --dump writes redacted recordings of its read-only answers.
+track      publish what each MiSTer plays to Home Assistant over MQTT
+           (track.py): a long-lived service, settings in MISTERFPGA_MQTT_*.
 simulate   run two simulated MiSTers (fake Zaparoo + fake SSH) on 127.0.0.1
            and 127.0.0.2, and write a config pointing at them, so everything
            above works without hardware.
@@ -172,6 +174,34 @@ async def _cmd_doctor(args: argparse.Namespace) -> int:
 
 
 # --- simulate ---------------------------------------------------------------------------------
+# --- track ------------------------------------------------------------------------------------
+async def _cmd_track() -> int:
+    import signal
+
+    from .track import load_track_settings, run
+
+    settings = load_settings()
+    for problem in settings.problems:
+        logging.getLogger("misterfpga_mcp").warning("%s", problem)
+    track, problems = load_track_settings()
+    for problem in problems:
+        print(f"mcp-server-misterfpga track: {problem}", file=sys.stderr)
+    if track is None:
+        return 2
+    if not settings.hosts:
+        print("mcp-server-misterfpga track: no MiSTer is configured; add one with `check` first.", file=sys.stderr)
+        return 2
+    stop = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):  # supervise-daemon stops it with SIGTERM
+        loop.add_signal_handler(sig, stop.set)
+    logging.getLogger("misterfpga_mcp").info(
+        "Tracking %s; MQTT broker %s:%d", ", ".join(h.label for h in settings.hosts), track.mqtt_host, track.mqtt_port
+    )
+    await run(settings, track, stop)
+    return 0
+
+
 async def _cmd_simulate(args: argparse.Namespace) -> int:
     from .sim.harness import Simulation
 
@@ -240,6 +270,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_doc.add_argument("--timeout", type=float, default=4.0, help="seconds per network step (default 4)")
     p_doc.add_argument("--dump", metavar="DIR", help="also write redacted recordings of the answers to DIR")
 
+    sub.add_parser("track", parents=[common], help="publish play sessions to Home Assistant over MQTT (a service)")
+
     p_sim = sub.add_parser("simulate", parents=[common], help="run two simulated MiSTers, for testing without one")
     p_sim.add_argument(
         "--dir",
@@ -269,6 +301,7 @@ def main(argv: list[str] | None = None) -> None:
         "check": lambda: _cmd_check(args),
         "call": lambda: _cmd_call(args.tool, args.args),
         "doctor": lambda: _cmd_doctor(args),
+        "track": _cmd_track,
     }
     if args.cmd in commands:
         try:

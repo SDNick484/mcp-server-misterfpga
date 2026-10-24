@@ -12,7 +12,9 @@ How it works:
 - Requests carry a uuid4 ``id``; responses are matched back to their futures.
   Several requests can be in flight on one socket.
 - Notifications (no ``id``) update a small cache (the last scanned card) and
-  are passed to listeners: the play tracker will be one.
+  are passed to listeners: the play tracker (track.py) is one. State
+  listeners hear ``True`` once a connection is up and its version read, and
+  ``False`` when it drops, so the tracker can catch up on what it missed.
 - Liveness: Zaparoo answers the text ``ping`` with ``pong`` (ASSUMPTION
   Z-ENDPOINT). We send one every 20 s and drop the connection if nothing at
   all has arrived for 60 s, so a MiSTer that was switched off is noticed even
@@ -82,6 +84,7 @@ BACKOFF_MAX = 30.0
 SETUP_HINT = "Install it from Update All (Tools & Scripts → Zaparoo); the README's 'Set up your MiSTer' has the steps."
 
 Listener = Callable[[str, dict[str, Any]], None]
+StateListener = Callable[[bool], None]
 
 
 @dataclass(frozen=True)
@@ -119,6 +122,7 @@ class ZaparooClient:
         self.last_token: Token | None = None
         self.tried = asyncio.Event()  # set once the first connection attempt has finished, either way
         self._listeners: list[Listener] = []
+        self._state_listeners: list[StateListener] = []
         self._pending: dict[str, asyncio.Future[Any]] = {}
         self._ws: aiohttp.ClientWebSocketResponse | None = None
         self._task: asyncio.Task[None] | None = None
@@ -137,6 +141,17 @@ class ZaparooClient:
     def add_listener(self, listener: Listener) -> None:
         self._listeners.append(listener)
 
+    def add_state_listener(self, listener: StateListener) -> None:
+        """Called with True when a connection is ready (version read), False when it's lost."""
+        self._state_listeners.append(listener)
+
+    def _state(self, up: bool) -> None:
+        for listener in list(self._state_listeners):
+            try:
+                listener(up)
+            except Exception:  # a listener's bug must not kill the connection
+                log.exception("%s: state listener failed", self.label)
+
     async def _run(self) -> None:
         backoff = 1.0
         async with aiohttp.ClientSession() as session:
@@ -153,8 +168,10 @@ class ZaparooClient:
                     self.error = describe_failure(exc, self.label, self.host, self.port)
                     log.info("%s: %s", self.label, self.error)
                 finally:
-                    self.connected = False
+                    was_up, self.connected = self.connected, False
                     self._ws = None
+                    if was_up:
+                        self._state(False)
                     self._fail_pending(Unavailable(self.error or f"Zaparoo on {self.label} disconnected"))
                 self.tried.set()
                 await asyncio.sleep(backoff)
@@ -188,6 +205,8 @@ class ZaparooClient:
             log.warning("%s: couldn't read Zaparoo's version: %s", self.label, exc)
         finally:
             self.tried.set()
+        if self.connected:
+            self._state(True)
 
     async def _ping(self, ws: aiohttp.ClientWebSocketResponse) -> None:
         while True:
