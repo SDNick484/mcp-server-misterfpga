@@ -21,6 +21,7 @@ SCREENSHOT = (6.0, 1 / 10)
 INI_WRITE = (10.0, 1 / 6)
 NFC = (10.0, 1 / 3)
 UPDATE = (1.0, 1 / 3600)
+BACKUP = (2.0, 1.0 / 120.0)
 
 SEARCH_MAX = 50
 HISTORY_MAX = 50

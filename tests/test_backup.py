@@ -20,7 +20,7 @@ def files_under(root: Path) -> dict[str, bytes]:
 
 
 async def test_first_backup_copies_everything(mcp_client, configured, backup_dir):
-    body = ok(await mcp_client.call_tool("backup_saves", {"host": "Office"}))
+    body = ok(await mcp_client.call_tool("mister_backup_saves", {"host": "Office"}))
     assert (body["outcome"], body["files"], body["copied"], body["linked"]) == ("done", 4, 4, 0)
     snap = Path(body["snapshot"])
     assert snap.parent == backup_dir / "office"
@@ -30,11 +30,11 @@ async def test_first_backup_copies_everything(mcp_client, configured, backup_dir
 
 
 async def test_second_backup_links_unchanged_files(mcp_client, configured):
-    first = ok(await mcp_client.call_tool("backup_saves", {"host": "Office"}))
+    first = ok(await mcp_client.call_tool("mister_backup_saves", {"host": "Office"}))
     save = sd_path(office(configured).device, "/media/fat/saves/SNES/Super Metroid (USA).sav")
     save.write_bytes(b"new progress")
     os.utime(save, (save.stat().st_atime, save.stat().st_mtime + 60))
-    second = ok(await mcp_client.call_tool("backup_saves", {"host": "Office"}))
+    second = ok(await mcp_client.call_tool("mister_backup_saves", {"host": "Office"}))
     assert (second["copied"], second["linked"]) == (1, 3)
     assert second["snapshot"] != first["snapshot"]  # same second: the name gets a suffix
     old, new = Path(first["snapshot"]), Path(second["snapshot"])
@@ -42,6 +42,15 @@ async def test_second_backup_links_unchanged_files(mcp_client, configured):
     assert (old / sonic).stat().st_ino == (new / sonic).stat().st_ino  # a hard link, not a second copy
     assert (new / "saves/SNES/Super Metroid (USA).sav").read_bytes() == b"new progress"
     assert (old / "saves/SNES/Super Metroid (USA).sav").read_bytes() != b"new progress"
+
+
+async def test_backup_rate_limit(mcp_client, configured):
+    # BACKUP capacity is 2.0; 2 calls succeed, 3rd is refused
+    ok(await mcp_client.call_tool("mister_backup_saves", {"host": "Office"}))
+    ok(await mcp_client.call_tool("mister_backup_saves", {"host": "Office"}))
+    r3 = await mcp_client.call_tool("mister_backup_saves", {"host": "Office"})
+    assert r3.is_error
+    assert "Rate limit on Office: refusing to backup saves" in error(r3)
 
 
 async def test_old_snapshots_are_pruned(configured, backup_dir, tmp_path):
@@ -52,7 +61,7 @@ async def test_old_snapshots_are_pruned(configured, backup_dir, tmp_path):
     (host_dir / "notes").mkdir()
     c = await connect()
     try:
-        body = ok(await c.call_tool("backup_saves", {"host": "Office"}))
+        body = ok(await c.call_tool("mister_backup_saves", {"host": "Office"}))
     finally:
         await c.__aexit__(None, None, None)
     assert body["pruned"] == 1
@@ -61,7 +70,7 @@ async def test_old_snapshots_are_pruned(configured, backup_dir, tmp_path):
 
 
 async def test_dry_run_writes_nothing(mcp_client, backup_dir):
-    body = ok(await mcp_client.call_tool("backup_saves", {"host": "Office", "dry_run": True}))
+    body = ok(await mcp_client.call_tool("mister_backup_saves", {"host": "Office", "dry_run": True}))
     assert (body["outcome"], body["copied"], body["snapshot"]) == ("dry_run", 4, None)
     assert list(backup_dir.iterdir()) == []
 
@@ -70,7 +79,7 @@ async def test_a_failed_backup_leaves_no_partial_snapshot(mcp_client, configured
     from misterfpga_mcp import backup as backup_module
 
     monkeypatch.setattr(backup_module, "MAX_BYTES", 10_000)  # the save state alone is 40 kB
-    msg = error(await mcp_client.call_tool("backup_saves", {"host": "Office"}))
+    msg = error(await mcp_client.call_tool("mister_backup_saves", {"host": "Office"}))
     assert "would copy more than 10 KiB in one go" in msg
     assert list((backup_dir / "office").iterdir()) == []
 
@@ -79,8 +88,8 @@ async def test_without_a_backup_dir_it_says_how_to_set_one(sim, tmp_path):
     sim.write_config(tmp_path / "config")  # no backup_dir
     c = await connect()
     try:
-        msg = error(await c.call_tool("backup_saves", {"host": "Office"}))
-        status = ok(await c.call_tool("get_status", {"host": "Office"}))["hosts"][0]
+        msg = error(await c.call_tool("mister_backup_saves", {"host": "Office"}))
+        status = ok(await c.call_tool("mister_get_status", {"host": "Office"}))["hosts"][0]
     finally:
         await c.__aexit__(None, None, None)
     assert "set backup_dir in config.json, or MISTERFPGA_BACKUP_DIR" in msg
@@ -91,7 +100,7 @@ async def test_without_a_backup_dir_it_says_how_to_set_one(sim, tmp_path):
 async def test_the_mister_is_only_read(mcp_client, configured):
     fat = sd_path(office(configured).device, "/media/fat")
     before = {p: p.stat().st_mtime_ns for p in fat.rglob("*")}
-    ok(await mcp_client.call_tool("backup_saves", {"host": "Office"}))
+    ok(await mcp_client.call_tool("mister_backup_saves", {"host": "Office"}))
     assert {p: p.stat().st_mtime_ns for p in fat.rglob("*")} == before
 
 

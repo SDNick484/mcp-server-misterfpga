@@ -1,0 +1,12 @@
+services:
+  misterfpga-mcp:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    image: sdnick484/mcp-server-misterfpga:latest
+    container_name: mcp-server-misterfpga
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - MCP_HTTP_BIND=127.0.0.1
+      - MCP_HTTP_PORT=8716

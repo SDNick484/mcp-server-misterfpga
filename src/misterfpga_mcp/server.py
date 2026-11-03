@@ -40,6 +40,7 @@ from .host import HostStatus, MisterHost, NowPlaying, Outcome, ref
 from .hosts import HostRegistry
 from .ini import DENIED, KEYS, STRING_MAX
 from .limits import HISTORY_MAX, SEARCH_MAX
+from .tools import ACT, ACT_IDEMPOTENT, DESTRUCTIVE, READ_ONLY
 
 log = logging.getLogger(__name__)
 
@@ -74,46 +75,43 @@ async def lifespan(_server: MCPServer) -> AsyncIterator[None]:
 mcp = MCPServer(
     "misterfpga",
     instructions=(
-        "Controls MiSTer FPGA devices (each usually on its own TV) through Zaparoo Core and SSH. Call get_status "
-        "first: it lists each MiSTer by name and model, what it's playing, and its capabilities and limitations. "
-        "Find games with search_games or play_history; launch them with launch(game=<ref>). launch refuses while "
-        "a game is running: ask before ending one with return_to_menu, since unsaved progress is lost. Pass host "
-        "only when the call doesn't already say which MiSTer (a ref does)."
+        "Controls MiSTer FPGA retro-gaming hardware through Zaparoo Core and root SSH. "
+        "In the gaming cabinet signal chain, the MiSTer FPGA acts as the Video and Audio Source feeding "
+        "direct HDMI or analog RGB video into the AV Receiver (Onkyo) or TV (LG webOS). "
+        "Game launch events trigger dynamic marquee updates on Pixelcade LED displays. "
+        "Play tracking publishes real-time session events to Home Assistant via MQTT "
+        "('misterfpga/<host>/now_playing'). "
+        "Call mister_get_status first: it lists each MiSTer by name and model, what it's playing, and its capabilities "
+        "and limitations. Find games with mister_search_games or mister_play_history; launch them with "
+        "mister_launch(game=<ref>). mister_launch refuses while a game is running: ask before ending one with "
+        "mister_return_to_menu, since unsaved progress is lost. Pass host only when the call doesn't already say "
+        "which MiSTer (a ref does)."
     ),
     lifespan=lifespan,
 )
 
-# Annotations: explicit on every tool, since a tool without them is assumed destructive, non-idempotent and
-# open-world. open_world is False everywhere: we only talk to MiSTers on the LAN. Destructive here means it can
-# lose something: unsaved game progress (return_to_menu, run_update, which may also reboot) or a card's contents
-# (write_nfc_card). Batocera's rule.
-_READ = ToolAnnotations(read_only_hint=True, open_world_hint=False)
-_ACT = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=False, open_world_hint=False)
-_ACT_IDEMPOTENT = ToolAnnotations(
-    read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=False
-)
-_DESTRUCTIVE = ToolAnnotations(
-    read_only_hint=False, destructive_hint=True, idempotent_hint=False, open_world_hint=False
-)
 _DESTRUCTIVE_IDEMPOTENT = ToolAnnotations(
     read_only_hint=False, destructive_hint=True, idempotent_hint=True, open_world_hint=False
 )
 
 Host = Annotated[
     str | None,
-    Field(description="MiSTer name from get_status. Omit when the call already says which (a ref does)."),
+    Field(description="MiSTer name from mister_get_status. Omit when the call already says which (a ref does)."),
 ]
 GameRef = Annotated[
     str,
-    Field(description="A game ref from search_games or play_history, e.g. 'Family Room/4812'.", max_length=80),
+    Field(
+        description="A game ref from mister_search_games or mister_play_history, e.g. 'Family Room/4812'.",
+        max_length=80,
+    ),
 ]
 System = Annotated[
     str | None,
-    Field(description="A system id from list_systems, e.g. 'SNES' or 'Genesis'.", max_length=40),
+    Field(description="A system id from mister_list_systems, e.g. 'SNES' or 'Genesis'.", max_length=40),
 ]
 IniFileName = Annotated[
     str,
-    Field(description="MiSTer.ini, or an alternate such as MiSTer_crt.ini (get_ini lists them).", max_length=60),
+    Field(description="MiSTer.ini, or an alternate such as MiSTer_crt.ini (mister_get_ini lists them).", max_length=60),
 ]
 
 
@@ -228,14 +226,17 @@ class NfcInfo(TypedDict):
 
 
 # --- reads ------------------------------------------------------------------------------
-@mcp.tool(title="Get MiSTer status", annotations=_READ)
-async def get_status(host: Host = None) -> Status:
-    """Start here. Every MiSTer (or just host): its model, what it's playing, and what works on it right now.
-
-    capabilities names what works (search, launch, screenshot, ini_write, backup_saves, ...); limitations says
-    what doesn't and how to fix it, e.g. Zaparoo Core not installed, or SSH not set up. core is the running
-    MiSTer core (MENU in the menu) and attract_mode is true while MiSTer Super Attract Mode cycles games; both
-    need SSH. dry_run true means this server reports writes instead of doing them.
+@mcp.tool(title="Get MiSTer status", annotations=READ_ONLY)
+async def mister_get_status(host: Host = None) -> Status:
+    """
+    <use_case>
+    Inspect status across all configured MiSTer FPGA devices or a single target device.
+    </use_case>
+    <important_notes>
+    - Start here: lists reachable devices, active cores, currently playing game ref, and capabilities/limitations.
+    - limitations flags missing Zaparoo Core or unconfigured SSH.
+    - attract_mode indicates active MiSTer Super Attract Mode demo cycle.
+    </important_notes>
     """
     r = await ready()
     statuses = await asyncio.gather(*(h.status() for h in r.candidates(host)))
@@ -267,11 +268,17 @@ async def _gather(
     return ok, [err for _, _, err in done if err is not None]
 
 
-@mcp.tool(title="List systems", annotations=_READ)
-async def list_systems(host: Host = None) -> Systems:
-    """The systems each MiSTer can launch (consoles, computers, arcade), with how many games each has indexed and
-    the MiSTer core that runs it. Use a system's id with search_games, or launch(system=...) to open the core
-    with no game (e.g. a computer core)."""
+@mcp.tool(title="List systems", annotations=READ_ONLY)
+async def mister_list_systems(host: Host = None) -> Systems:
+    """
+    <use_case>
+    List indexed gaming systems, media counts, and FPGA cores across devices.
+    </use_case>
+    <important_notes>
+    - Covers consoles, computers, and arcade cores configured on the MiSTer.
+    - Use returned system id in mister_search_games, or pass to mister_launch to load a core with no game.
+    </important_notes>
+    """
     r = await ready()
 
     async def work(h: MisterHost) -> list[SystemInfo]:
@@ -303,17 +310,22 @@ def _variant(row: dict[str, object]) -> str | None:
     return ", ".join(parts) or None
 
 
-@mcp.tool(title="Search for games", annotations=_READ)
-async def search_games(
+@mcp.tool(title="Search for games", annotations=READ_ONLY)
+async def mister_search_games(
     query: Annotated[str, Field(min_length=1, max_length=100, description="Words in the game's name, e.g. 'metroid'.")],
     system: System = None,
     host: Host = None,
     limit: Annotated[int, Field(ge=1, le=SEARCH_MAX, description="Most results per MiSTer.")] = 20,
 ) -> Search:
-    """Find games in each MiSTer's Zaparoo library by name (every word must match), optionally in one system.
-
-    Each result has a ref for launch. The same game on two MiSTers comes back twice, with two refs: the ref says
-    which TV it launches on. variant tells apart files with the same name (region, revision, hack).
+    """
+    <use_case>
+    Search for games across MiSTer FPGA libraries by name query and optional system filter.
+    </use_case>
+    <important_notes>
+    - Returns launchable game refs (e.g. 'Family Room/4812').
+    - The ref encapsulates target host and mediaId for subsequent mister_launch calls.
+    - variant differentiates region/revision/hack versions.
+    </important_notes>
     """
     r = await ready()
 
@@ -351,8 +363,8 @@ def _when(stamp: str | None) -> datetime:
     return t if t.tzinfo else t.replace(tzinfo=UTC)
 
 
-@mcp.tool(title="Play history", annotations=_READ)
-async def play_history(
+@mcp.tool(title="Play history", annotations=READ_ONLY)
+async def mister_play_history(
     mode: Annotated[
         Literal["recent", "top"],
         Field(description="recent: last played first, one row per game. top: most played by total time."),
@@ -361,8 +373,15 @@ async def play_history(
     host: Host = None,
     limit: Annotated[int, Field(ge=1, le=HISTORY_MAX)] = 10,
 ) -> History:
-    """What's been played on each MiSTer, from Zaparoo's own records: games launched from the MiSTer's menu
-    count too. Rows have a ref, so 'play the last thing again' is one launch call."""
+    """
+    <use_case>
+    Inspect recently played or most played games across MiSTer devices.
+    </use_case>
+    <important_notes>
+    - Aggregated from Zaparoo Core logs on hardware.
+    - Each row includes a launchable ref to immediately relaunch a game.
+    </important_notes>
+    """
     r = await ready()
 
     async def work(h: MisterHost) -> list[dict[str, object]]:
@@ -392,16 +411,23 @@ async def play_history(
     return {"entries": entries[:limit], "unavailable": unavailable}
 
 
-@mcp.tool(title="Read MiSTer.ini", annotations=_READ)
-async def get_ini(
+@mcp.tool(title="Read MiSTer.ini", annotations=READ_ONLY)
+async def mister_get_ini(
     section: Annotated[
         str | None, Field(description="Only this section, e.g. MiSTer or SNES. Omit for all.", max_length=60)
     ] = None,
     file: IniFileName = "MiSTer.ini",
     host: Host = None,
 ) -> IniView:
-    """Read a MiSTer's MiSTer.ini (or an alternate ini), parsed into sections the way MiSTer reads it. [MiSTer]
-    is global; [SNES] and other core-named sections override it for that core. Needs SSH."""
+    """
+    <use_case>
+    Read sections and key-value pairs from MiSTer.ini configuration files on SD storage.
+    </use_case>
+    <important_notes>
+    - Requires root SSH access to the device.
+    - [MiSTer] section is global; core sections (e.g. [SNES]) provide per-core overrides.
+    </important_notes>
+    """
     h = (await ready()).one(host, "be read")
     ini = await h.read_ini(file)
     sections = ini.sections()
@@ -410,10 +436,17 @@ async def get_ini(
     return {"host": h.name, "file": file, "files": await h.ini_files(), "sections": sections}
 
 
-@mcp.tool(title="List NFC readers and cards", annotations=_READ)
-async def list_nfc(host: Host = None) -> NfcInfo:
-    """A MiSTer's NFC readers, the card-to-game mappings Zaparoo has, and the last card scanned (its UID is what
-    map_nfc_card uses by default)."""
+@mcp.tool(title="List NFC readers and cards", annotations=READ_ONLY)
+async def mister_list_nfc(host: Host = None) -> NfcInfo:
+    """
+    <use_case>
+    List connected NFC readers, card-to-game mappings, and the last scanned card UID.
+    </use_case>
+    <important_notes>
+    - Use this to check whether a reader supports write operations (can_write=True).
+    - Returns the last scanned card UID for mister_map_nfc_card workflows.
+    </important_notes>
+    """
     h = (await ready()).one(host, "be checked for NFC")
     readers: list[ReaderInfo] = [
         {
@@ -446,39 +479,54 @@ async def list_nfc(host: Host = None) -> NfcInfo:
 
 
 # --- actions ----------------------------------------------------------------------------
-@mcp.tool(title="Launch a game or core", annotations=_ACT_IDEMPOTENT)
-async def launch(
+@mcp.tool(title="Launch a game or core", annotations=ACT_IDEMPOTENT)
+async def mister_launch(
     game: Annotated[
         str | None,
-        Field(description="A game ref from search_games or play_history, e.g. 'Family Room/4812'.", max_length=80),
+        Field(
+            description="A game ref from mister_search_games or mister_play_history, e.g. 'Family Room/4812'.",
+            max_length=80,
+        ),
     ] = None,
     system: Annotated[
         str | None,
         Field(
-            description="Instead of a game: a system id from list_systems, to open its core with no game.",
+            description="Instead of a game: a system id from mister_list_systems, to open its core with no game.",
             max_length=40,
         ),
     ] = None,
     host: Host = None,
 ) -> Outcome:
-    """Launch a game (by ref) or open a system's core (by id) and wait until the MiSTer reports it running.
-
-    Refuses while anything is running on that MiSTer: ending a game loses unsaved progress, so that's
-    return_to_menu's job, and you should ask first. Rapid repeated launches are rate-limited.
+    """
+    <use_case>
+    Launch a game via ref or open a core without media on a MiSTer FPGA.
+    </use_case>
+    <important_notes>
+    - Refuses to launch while another game is active; call mister_return_to_menu first.
+    - Rate-limited to prevent rapid FPGA bitstream reconfiguration cycling.
+    - Signals game start to Pixelcade marquees and MQTT play tracking.
+    </important_notes>
     """
     r = await ready()
     if game is not None:
         h, media_id = r.game(game, host)
         return await h.launch(media_id, None)
     if system is None:
-        raise MisterError("Pass game (a ref from search_games) or system (an id from list_systems).")
+        raise MisterError("Pass game (a ref from mister_search_games) or system (an id from mister_list_systems).")
     return await r.one(host, "open the core").launch(None, system)
 
 
 @mcp.tool(title="Return to the MiSTer menu", annotations=_DESTRUCTIVE_IDEMPOTENT)
-async def return_to_menu(host: Host = None) -> Results:
-    """End whatever is running and go back to the MiSTer menu. Unsaved progress in the game is lost, so confirm
-    with the user first. Without host, acts on the one MiSTer that's running something."""
+async def mister_return_to_menu(host: Host = None) -> Results:
+    """
+    <use_case>
+    Exit the active game and reload the MiSTer main menu core.
+    </use_case>
+    <important_notes>
+    - DESTRUCTIVE: Unsaved game progress will be lost.
+    - If host is omitted, acts on whichever MiSTer is currently running a game.
+    </important_notes>
+    """
     r = await ready()
     targets = await r.busy(host, "return to the menu")
     if not targets:
@@ -490,10 +538,17 @@ async def return_to_menu(host: Host = None) -> Results:
     return {"results": [await h.return_to_menu() for h in targets]}
 
 
-@mcp.tool(title="Take a screenshot", annotations=_ACT)
-async def screenshot(host: Host = None) -> CallToolResult:
-    """Capture what a MiSTer is showing, as an image. MiSTer also saves it under /media/fat/screenshots. Without
-    host, uses the one MiSTer that's running something."""
+@mcp.tool(title="Take a screenshot", annotations=ACT)
+async def mister_take_screenshot(host: Host = None) -> CallToolResult:
+    """
+    <use_case>
+    Capture the current video output of the MiSTer as an image.
+    </use_case>
+    <important_notes>
+    - Rate-limited to avoid SD card write exhaustion.
+    - Saves PNG to /media/fat/screenshots and returns inline ImageContent.
+    </important_notes>
+    """
     r = await ready()
     pool = await r.busy(host, "take a screenshot")
     h = pool[0] if len(pool) == 1 else r.one(host, "take a screenshot")
@@ -508,8 +563,8 @@ async def screenshot(host: Host = None) -> CallToolResult:
     )
 
 
-@mcp.tool(title="Change a MiSTer.ini setting", annotations=_ACT_IDEMPOTENT)
-async def set_ini(
+@mcp.tool(title="Change a MiSTer.ini setting", annotations=ACT_IDEMPOTENT)
+async def mister_set_ini(
     key: Annotated[
         str, Field(description="A MiSTer.ini key, e.g. vscale_mode (misterfpga://ini-keys lists them).", max_length=40)
     ],
@@ -528,11 +583,15 @@ async def set_ini(
     host: Host = None,
     dry_run: Annotated[bool, Field(description="Show the change (diff) without writing it.")] = False,
 ) -> IniChange:
-    """Set (or remove) one MiSTer.ini setting, globally or for one core, keeping the rest of the file as it is.
-
-    The previous file is saved next to it first (MiSTer.ini.<time>.bak). The change takes effect the next time
-    a core loads. A few keys are refused (main, bootcore, shared_folder, debug; see misterfpga://ini-keys).
-    Needs SSH.
+    """
+    <use_case>
+    Modify or clear a configuration key in MiSTer.ini (or alternate ini).
+    </use_case>
+    <important_notes>
+    - Creates a timestamped .bak backup on SD storage before writing.
+    - Rate-limited to guard against rapid SD card wear.
+    - Dangerous system keys (main, bootcore, shared_folder) are disallowed.
+    </important_notes>
     """
     h = (await ready()).one(host, "be changed")
     out, change, backup = await h.set_ini(key, value, section, file, dry_run)
@@ -551,17 +610,21 @@ async def set_ini(
     }
 
 
-@mcp.tool(title="Back up saves", annotations=_ACT_IDEMPOTENT)
-async def backup_saves(
+@mcp.tool(title="Back up saves", annotations=ACT_IDEMPOTENT)
+async def mister_backup_saves(
     ctx: Context,
     host: Host = None,
     dry_run: Annotated[bool, Field(description="Count what would be copied, write nothing.")] = False,
 ) -> BackupInfo:
-    """Copy a MiSTer's saves and save states into a new dated snapshot in the configured backup folder.
-
-    Files unchanged since the last snapshot are hard-linked rather than downloaded, so each snapshot is complete
-    but only changes cost space. The MiSTer is only read. Old snapshots beyond the configured number are removed.
-    Needs SSH and a backup folder (backup_dir).
+    """
+    <use_case>
+    Create a timestamped local backup of game saves and save states from the MiSTer.
+    </use_case>
+    <important_notes>
+    - Rate-limited to prevent SD card and network IOPS exhaustion.
+    - Uses hard links for unchanged files to save disk space.
+    - Requires configured backup_dir and SSH connectivity.
+    </important_notes>
     """
     h = (await ready()).one(host, "be backed up")
 
@@ -581,38 +644,52 @@ async def backup_saves(
     }
 
 
-@mcp.tool(title="Update the MiSTer", annotations=_DESTRUCTIVE)
-async def run_update(
-    host: Annotated[str, Field(description="MiSTer name from get_status. Required: there's no default for this.")],
+@mcp.tool(title="Update the MiSTer", annotations=DESTRUCTIVE)
+async def mister_run_update(
+    host: Annotated[
+        str,
+        Field(description="MiSTer name from mister_get_status. Required: there's no default for this."),
+    ],
     confirm: Annotated[
         Literal[True], Field(description="Must be true: you've confirmed with the user that it may reboot.")
     ],
 ) -> Outcome:
-    """Start Update All on a MiSTer's own screen (cores, Main, Linux, and whatever else it's set to update).
-
-    It runs for several minutes and the MiSTer may reboot at the end. Refuses while a game is running.
-    Limited to once an hour per MiSTer.
+    """
+    <use_case>
+    Trigger update_all.sh to update cores, scripts, and Linux system files.
+    </use_case>
+    <important_notes>
+    - DESTRUCTIVE: Runs on screen for several minutes and may trigger a system reboot.
+    - Refused if a game is currently playing.
+    - Rate-limited to once per hour to prevent reboot loops.
+    </important_notes>
     """
     h = (await ready()).one(host, "be updated")
     return await h.run_update()
 
 
-@mcp.tool(title="Write a game to an NFC card", annotations=_DESTRUCTIVE)
-async def write_nfc_card(
+@mcp.tool(title="Write a game to an NFC card", annotations=DESTRUCTIVE)
+async def mister_write_nfc_card(
     game: GameRef,
     reader: Annotated[
-        str | None, Field(description="Reader id from list_nfc, when there's more than one.", max_length=80)
+        str | None, Field(description="Reader id from mister_list_nfc, when there's more than one.", max_length=80)
     ] = None,
 ) -> Outcome:
-    """Write a game onto the NFC card sitting on the reader attached to the game's MiSTer, so tapping it launches
-    the game. Overwrites whatever the card held. Ask the user to place the card first; the call waits up to a
-    minute for it."""
+    """
+    <use_case>
+    Write game launch metadata to an NFC card on a compatible writer.
+    </use_case>
+    <important_notes>
+    - DESTRUCTIVE: Overwrites existing payload on the NFC tag.
+    - Prompts user to place card on reader; waits up to 60s.
+    </important_notes>
+    """
     h, media_id = (await ready()).game(game, None)
     return await h.write_card(media_id, reader)
 
 
-@mcp.tool(title="Map an NFC card to a game", annotations=_ACT_IDEMPOTENT)
-async def map_nfc_card(
+@mcp.tool(title="Map an NFC card to a game", annotations=ACT_IDEMPOTENT)
+async def mister_map_nfc_card(
     game: GameRef,
     uid: Annotated[
         str | None,
@@ -622,9 +699,15 @@ async def map_nfc_card(
         ),
     ] = None,
 ) -> Outcome:
-    """Make a card launch a game without writing to it: Zaparoo remembers 'this card's UID means this game'.
-    Works with read-only cards and toys. Ask the user to scan the card on the game's MiSTer first, then call this
-    without uid. Refuses a card that's already mapped."""
+    """
+    <use_case>
+    Associate a physical card UID with a game in Zaparoo without writing to the card.
+    </use_case>
+    <important_notes>
+    - Suitable for read-only cards, amiibo, or arcade tokens.
+    - Uses last scanned UID if uid parameter is omitted.
+    </important_notes>
+    """
     h, media_id = (await ready()).game(game, None)
     return await h.map_card(media_id, uid)
 
@@ -656,11 +739,12 @@ def make_nfc_cards(games: str = "", host: str = "") -> str:
     where = f"on the MiSTer {host!r}" if host else "on the MiSTer that has the NFC reader (ask me which if unsure)"
     return (
         f"Help me make NFC cards for {which}, {where}.\n"
-        "1. Call list_nfc to see the readers: a reader with can_write true can write cards; otherwise we'll map "
+        "1. Call mister_list_nfc to see the readers: a reader with can_write true can write cards; otherwise we'll map "
         "cards by UID.\n"
-        "2. For each game, call search_games and show me the matches if there's more than one, so I can pick.\n"
+        "2. For each game, call mister_search_games and show me the matches if there's more than one, so I can pick.\n"
         "3. Then, one card at a time: tell me to put a card on the reader (to write) or to tap it (to map), wait "
-        "for me to say it's there, and call write_nfc_card or map_nfc_card. Report each result before the next.\n"
+        "for me to say it's there, and call mister_write_nfc_card or mister_map_nfc_card. "
+        "Report each result before the next.\n"
         "4. At the end, list which card got which game."
     )
 

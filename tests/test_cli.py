@@ -46,6 +46,9 @@ async def test_call_lists_and_calls_tools(configured, tmp_path):
     code, out, err = await run("call", "search_games", "query=gunstar", env_dir=tmp_path / "config")
     assert code == 0, err
     assert json.loads(out)["results"][0]["ref"] == "Family Room/4901"
+    code_ns, out_ns, err_ns = await run("call", "mister_search_games", "query=gunstar", env_dir=tmp_path / "config")
+    assert code_ns == 0, err_ns
+    assert json.loads(out_ns)["results"][0]["ref"] == "Family Room/4901"
     code, _, err = await run("call", "launch", "game=Nowhere/1", env_dir=tmp_path / "config")
     assert code == 1 and "names no configured MiSTer" in err
 

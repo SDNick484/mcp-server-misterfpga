@@ -127,19 +127,21 @@ async def test_one_mister_off_doesnt_hide_the_other(sim, tmp_path, backup_dir):
     sim.write_config(tmp_path / "config", backup_dir=backup_dir)
     c = await connect()
     try:
-        body = ok(await c.call_tool("search_games", {"query": "metroid"}))
+        body = ok(await c.call_tool("mister_search_games", {"query": "metroid"}))
         assert [r["host"] for r in body["results"]] == ["Family Room"]
         assert body["unavailable"][0].startswith("Office: Zaparoo Core isn't running on Office")
-        status = {h["name"]: h for h in ok(await c.call_tool("get_status", {}))["hosts"]}
+        status = {h["name"]: h for h in ok(await c.call_tool("mister_get_status", {}))["hosts"]}
         office_status = status["Office"]
         assert office_status["zaparoo"]["connected"] is False and office_status["reachable"] is True  # SSH works
         assert "search" not in office_status["capabilities"]
         assert any("Update All" in limit for limit in office_status["limitations"])
         # With one MiSTer named, its error is the answer.
-        assert "isn't running on Office" in error(await c.call_tool("search_games", {"query": "x", "host": "Office"}))
+        assert "isn't running on Office" in error(
+            await c.call_tool("mister_search_games", {"query": "x", "host": "Office"})
+        )
         # Without Zaparoo, return_to_menu falls back to MiSTer's own command over SSH (ASSUMPTION M-CMD).
         office(sim).device.start_core("SNES")
-        body = ok(await c.call_tool("return_to_menu", {"host": "Office"}))
+        body = ok(await c.call_tool("mister_return_to_menu", {"host": "Office"}))
         assert body["results"][0]["outcome"] == "done" and office(sim).device.core == "MENU"
     finally:
         await c.__aexit__(None, None, None)
