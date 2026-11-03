@@ -49,20 +49,20 @@ def test_the_ssh_commands_are_exactly_these():
 async def test_a_full_session_sends_only_allowed_methods_and_commands(mcp_client, configured):
     """Every tool, then: did anything outside the allow-lists reach the MiSTers?"""
     calls = [
-        ("get_status", {}),
-        ("list_systems", {}),
-        ("search_games", {"query": "a"}),
-        ("play_history", {"mode": "top"}),
-        ("get_ini", {"host": "Office"}),
-        ("list_nfc", {"host": "Office"}),
-        ("launch", {"game": "Office/101"}),
-        ("screenshot", {}),
-        ("return_to_menu", {}),
-        ("set_ini", {"host": "Office", "key": "recents", "value": 0}),
-        ("backup_saves", {"host": "Office"}),
-        ("map_nfc_card", {"game": "Office/103", "uid": "04112233"}),
-        ("write_nfc_card", {"game": "Office/102"}),
-        ("run_update", {"host": "Office", "confirm": True}),
+        ("mister_get_status", {}),
+        ("mister_list_systems", {}),
+        ("mister_search_games", {"query": "a"}),
+        ("mister_play_history", {"mode": "top"}),
+        ("mister_get_ini", {"host": "Office"}),
+        ("mister_list_nfc", {"host": "Office"}),
+        ("mister_launch", {"game": "Office/101"}),
+        ("mister_take_screenshot", {}),
+        ("mister_return_to_menu", {}),
+        ("mister_set_ini", {"host": "Office", "key": "recents", "value": 0}),
+        ("mister_backup_saves", {"host": "Office"}),
+        ("mister_map_nfc_card", {"game": "Office/103", "uid": "04112233"}),
+        ("mister_write_nfc_card", {"game": "Office/102"}),
+        ("mister_run_update", {"host": "Office", "confirm": True}),
     ]
     assert {name for name, _ in calls} == test_tools.TOOL_NAMES
     for name, args in calls:
@@ -77,18 +77,18 @@ async def test_a_full_session_sends_only_allowed_methods_and_commands(mcp_client
     ["**execute:reboot", "Office/101; reboot", "@SNES/Super Metroid", "Office/../101", "Office/-1", "Office/1e3"],
 )
 async def test_a_game_must_be_a_ref_never_zapscript_or_a_path(mcp_client, configured, game):
-    assert "isn't a game ref" in error(await mcp_client.call_tool("launch", {"game": game}))
+    assert "isn't a game ref" in error(await mcp_client.call_tool("mister_launch", {"game": game}))
     assert "run" not in office(configured).zaparoo.methods
 
 
 async def test_system_ids_cant_carry_zapscript(mcp_client, configured):
-    msg = error(await mcp_client.call_tool("launch", {"system": "SNES||**execute:reboot", "host": "Office"}))
+    msg = error(await mcp_client.call_tool("mister_launch", {"system": "SNES||**execute:reboot", "host": "Office"}))
     assert "has no system" in msg
     assert "run" not in office(configured).zaparoo.methods
 
 
 async def test_launch_runs_exactly_the_libraries_own_zapscript(mcp_client, configured):
-    ok(await mcp_client.call_tool("launch", {"game": "Office/107"}))
+    ok(await mcp_client.call_tool("mister_launch", {"game": "Office/107"}))
     runs = [p for m, p in office(configured).zaparoo.received if m == "run"]
     assert runs == [{"text": "@Arcade/Street Fighter II (region:jp)"}]  # from media.meta, never from the caller
 
@@ -158,13 +158,13 @@ async def test_runaway_launches_are_refused_whole(mcp_client, configured):
     now = [0.0]
     h = server.registry().candidates("Office")[0]
     h.launch_bucket = TokenBucket(2, 1 / 15, clock=lambda: now[0])
-    ok(await mcp_client.call_tool("launch", {"game": "Office/101"}))
-    ok(await mcp_client.call_tool("return_to_menu", {}))
-    msg = error(await mcp_client.call_tool("launch", {"game": "Office/102"}))
-    assert msg.startswith("Error executing tool launch: Rate limit on Office: refusing to launch Chrono Trigger")
+    ok(await mcp_client.call_tool("mister_launch", {"game": "Office/101"}))
+    ok(await mcp_client.call_tool("mister_return_to_menu", {}))
+    msg = error(await mcp_client.call_tool("mister_launch", {"game": "Office/102"}))
+    assert "Rate limit on Office: refusing to launch Chrono Trigger" in msg
     assert office(configured).device.active is None  # refused before anything was sent
     now[0] = 15.0
-    ok(await mcp_client.call_tool("launch", {"game": "Office/102"}))
+    ok(await mcp_client.call_tool("mister_launch", {"game": "Office/102"}))
 
 
 async def test_dry_run_changes_nothing(configured, monkeypatch):
@@ -173,14 +173,14 @@ async def test_dry_run_changes_nothing(configured, monkeypatch):
     monkeypatch.setenv("MISTERFPGA_DRY_RUN", "1")
     c = await connect()
     try:
-        assert ok(await c.call_tool("get_status", {}))["dry_run"] is True
+        assert ok(await c.call_tool("mister_get_status", {}))["dry_run"] is True
         for name, args in [
-            ("launch", {"game": "Office/101"}),
-            ("set_ini", {"host": "Office", "key": "recents", "value": 0}),
-            ("map_nfc_card", {"game": "Office/103", "uid": "04112233"}),
-            ("write_nfc_card", {"game": "Office/102"}),
-            ("run_update", {"host": "Office", "confirm": True}),
-            ("backup_saves", {"host": "Office"}),
+            ("mister_launch", {"game": "Office/101"}),
+            ("mister_set_ini", {"host": "Office", "key": "recents", "value": 0}),
+            ("mister_map_nfc_card", {"game": "Office/103", "uid": "04112233"}),
+            ("mister_write_nfc_card", {"game": "Office/102"}),
+            ("mister_run_update", {"host": "Office", "confirm": True}),
+            ("mister_backup_saves", {"host": "Office"}),
         ]:
             body = ok(await c.call_tool(name, args))
             assert body.get("outcome") == "dry_run", (name, body)

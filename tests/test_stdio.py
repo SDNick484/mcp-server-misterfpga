@@ -27,6 +27,6 @@ async def test_serve_over_stdio(tmp_path):
     env.pop("MISTERFPGA_HOSTS", None)
     async with Client(StdioServerParameters(command=exe, args=[], env=env)) as c:
         assert {t.name for t in (await c.list_tools()).tools} == TOOL_NAMES
-        assert (await c.call_tool("get_status", {})).is_error  # no MiSTer configured: says how to add one
+        assert (await c.call_tool("mister_get_status", {})).is_error  # no MiSTer configured: says how to add one
         resources = {str(r.uri) for r in (await c.list_resources()).resources}
         assert "misterfpga://ini-keys" in resources

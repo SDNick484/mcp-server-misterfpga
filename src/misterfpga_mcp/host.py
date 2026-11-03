@@ -26,6 +26,7 @@ from .backup import BackupResult, Progress, backup_saves
 from .config import HostSettings, Settings, name_key
 from .errors import MisterError, Unavailable, ZaparooError
 from .ini import Change, IniFile, check_section, check_value, key_info
+from .logsafe import mask_url
 from .ratelimit import TokenBucket, refusal
 from .ssh import SD, Command, MisterShell, check_path, is_ini_name
 from .zaparoo import RUN_TIMEOUT, SETUP_HINT, WRITE_TIMEOUT, ZaparooClient
@@ -128,6 +129,7 @@ class MisterHost:
         self.ini_bucket: TokenBucket = limits.bucket(limits.INI_WRITE)
         self.nfc_bucket: TokenBucket = limits.bucket(limits.NFC)
         self.update_bucket: TokenBucket = limits.bucket(limits.UPDATE)
+        self.backup_bucket: TokenBucket = limits.bucket(limits.BACKUP)
         self._backup_lock = asyncio.Lock()
 
     @property
@@ -259,9 +261,10 @@ class MisterHost:
         if self.zaparoo.connected:
             caps += ["search", "launch", "history", "screenshot", "nfc_read", "nfc_write", "nfc_map", "update"]
             if library is not None and not library["indexed"]:
+                web_url = mask_url(f"http://{self.settings.host}:{self.settings.zaparoo_port}/app/")
                 limits_.append(
                     f"Zaparoo on {self.name} hasn't indexed any games yet, so search finds nothing: open Zaparoo's "
-                    f"web UI (http://{self.settings.host}:{self.settings.zaparoo_port}/app/) and update the media "
+                    f"web UI ({web_url}) and update the media "
                     "database."
                 )
         else:
@@ -347,11 +350,11 @@ class MisterHost:
 
     async def launch(self, media_id: int | None, system: str | None) -> Outcome:
         if (media_id is None) == (system is None):
-            raise MisterError("Pass exactly one of game (a ref from search_games) or system (from list_systems).")
+            raise MisterError("Pass exactly one of game (a ref from mister_search_games) or system (from mister_list_systems).")
         running = await self.busy()
         if running:
             raise MisterError(
-                f"{self.name} is running {running}. Call return_to_menu for {self.name} first (that ends the "
+                f"{self.name} is running {running}. Call mister_return_to_menu for {self.name} first (that ends the "
                 "game, so unsaved progress is lost), then launch."
             )
         if media_id is not None:
@@ -500,6 +503,7 @@ class MisterHost:
             )
         if self._backup_lock.locked():
             raise MisterError(f"A backup of {self.name} is already running.")
+        self._limit(self.backup_bucket, "backup saves")
         async with self._backup_lock:
             return await backup_saves(
                 shell,

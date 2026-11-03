@@ -59,6 +59,7 @@ import aiomqtt
 
 from .config import HostSettings, Settings, config_dir
 from .errors import MisterError
+from .logsafe import mask_host_port
 from .tasks import stop_task
 from .zaparoo import ZaparooClient
 
@@ -509,7 +510,7 @@ async def deliver(track: TrackSettings, outbox: Outbox, client_id: str) -> None:
                 keepalive=30,
                 timeout=10,
             ) as client:
-                log.info("Connected to the MQTT broker at %s:%d", track.mqtt_host, track.mqtt_port)
+                log.info("Connected to the MQTT broker at %s", mask_host_port(f"{track.mqtt_host}:{track.mqtt_port}"))
                 backoff = 1.0
                 watcher = asyncio.create_task(_until_disconnected(client), name="mqtt watch")
                 try:
@@ -545,7 +546,7 @@ async def deliver(track: TrackSettings, outbox: Outbox, client_id: str) -> None:
             outbox.connected = False
             # Events not yet sent go back in front; retained values are resent from outbox.retained anyway.
             outbox.queue.extendleft(reversed([m for m in first if not m[2]]))
-            log.warning("MQTT broker %s:%d: %s; retrying in %.0fs", track.mqtt_host, track.mqtt_port, exc, backoff)
+            log.warning("MQTT broker %s: %s; retrying in %.0fs", mask_host_port(f"{track.mqtt_host}:{track.mqtt_port}"), exc, backoff)
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 30.0)
 

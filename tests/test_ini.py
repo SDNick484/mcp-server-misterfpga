@@ -150,10 +150,10 @@ def test_bad_sections(bad):
 # --- end to end over SFTP ----------------------------------------------------------------------------
 @pytest.mark.anyio
 async def test_get_ini_reads_sections_and_lists_files(mcp_client):
-    body = ok(await mcp_client.call_tool("get_ini", {"host": "Office"}))
+    body = ok(await mcp_client.call_tool("mister_get_ini", {"host": "Office"}))
     assert body["files"] == ["MiSTer.ini", "MiSTer_crt.ini"]
     assert body["sections"]["arcade_vertical"] == {"vscale_mode": "1"}
-    crt = ok(await mcp_client.call_tool("get_ini", {"host": "Office", "file": "MiSTer_crt.ini", "section": "mister"}))
+    crt = ok(await mcp_client.call_tool("mister_get_ini", {"host": "Office", "file": "MiSTer_crt.ini", "section": "mister"}))
     assert crt["sections"] == {"MiSTer": {"vga_scaler": "0", "composite_sync": "1"}}
 
 
@@ -161,7 +161,7 @@ async def test_get_ini_reads_sections_and_lists_files(mcp_client):
 async def test_set_ini_per_core_writes_a_backup_first(mcp_client, configured):
     body = ok(
         await mcp_client.call_tool(
-            "set_ini", {"host": "Family Room", "section": "snes", "key": "vscale_mode", "value": 3}
+            "mister_set_ini", {"host": "Family Room", "section": "snes", "key": "vscale_mode", "value": 3}
         )
     )
     assert (body["outcome"], body["old"], body["new"], body["section"]) == ("done", "1", "3", "SNES")
@@ -176,9 +176,9 @@ async def test_set_ini_per_core_writes_a_backup_first(mcp_client, configured):
 @pytest.mark.anyio
 async def test_set_ini_dry_run_and_unchanged_write_nothing(mcp_client, configured):
     before = sd_path(office(configured).device, "/media/fat/MiSTer.ini").read_text()
-    dry = ok(await mcp_client.call_tool("set_ini", {"host": "Office", "key": "recents", "value": 0, "dry_run": True}))
+    dry = ok(await mcp_client.call_tool("mister_set_ini", {"host": "Office", "key": "recents", "value": 0, "dry_run": True}))
     assert dry["outcome"] == "dry_run" and "-recents=1" in dry["diff"] and dry["backup"] is None
-    same = ok(await mcp_client.call_tool("set_ini", {"host": "Office", "key": "recents", "value": 1}))
+    same = ok(await mcp_client.call_tool("mister_set_ini", {"host": "Office", "key": "recents", "value": 1}))
     assert same["outcome"] == "unchanged"
     assert sd_path(office(configured).device, "/media/fat/MiSTer.ini").read_text() == before
     assert not list(sd_path(office(configured).device, "/media/fat").glob("MiSTer.ini.*.bak"))
@@ -188,7 +188,7 @@ async def test_set_ini_dry_run_and_unchanged_write_nothing(mcp_client, configure
 async def test_set_ini_warns_about_a_core_that_isnt_installed(mcp_client):
     body = ok(
         await mcp_client.call_tool(
-            "set_ini", {"host": "Office", "section": "SNSE", "key": "vscale_mode", "value": 1, "dry_run": True}
+            "mister_set_ini", {"host": "Office", "section": "SNSE", "key": "vscale_mode", "value": 1, "dry_run": True}
         )
     )
     assert "No installed core on Office is called SNSE" in body["warnings"][0]
@@ -197,7 +197,7 @@ async def test_set_ini_warns_about_a_core_that_isnt_installed(mcp_client):
 @pytest.mark.anyio
 async def test_set_ini_without_posix_rename_still_replaces_the_file(mcp_client, configured):
     office(configured).ssh.sftp_posix_rename = False  # ASSUMPTION M-INI-RENAME: the fallback path
-    ok(await mcp_client.call_tool("set_ini", {"host": "Office", "key": "log_file_entry", "value": 1}))
+    ok(await mcp_client.call_tool("mister_set_ini", {"host": "Office", "key": "log_file_entry", "value": 1}))
     text = sd_path(office(configured).device, "/media/fat/MiSTer.ini").read_text()
     assert "log_file_entry=1" in text
 
@@ -208,7 +208,7 @@ async def test_old_backups_are_pruned_to_ten(mcp_client, configured):
     for i in range(12):
         sd_path(device, f"/media/fat/MiSTer.ini.2026010{i % 10}T00000{i % 10}Z.bak").write_text("old")
     sd_path(device, "/media/fat/MiSTer.ini.keep-me.bak").write_text("not ours")
-    ok(await mcp_client.call_tool("set_ini", {"host": "Office", "key": "vscale_mode", "value": 2}))
+    ok(await mcp_client.call_tool("mister_set_ini", {"host": "Office", "key": "vscale_mode", "value": 2}))
     fat = sd_path(device, "/media/fat")
     ours = sorted(p.name for p in fat.glob("MiSTer.ini.*Z.bak"))
     assert len(ours) == 10
@@ -218,13 +218,13 @@ async def test_old_backups_are_pruned_to_ten(mcp_client, configured):
 @pytest.mark.anyio
 async def test_set_ini_refusals(mcp_client):
     assert "can't be set" in error(
-        await mcp_client.call_tool("set_ini", {"host": "Office", "key": "main", "value": "MiSTer_test"})
+        await mcp_client.call_tool("mister_set_ini", {"host": "Office", "key": "main", "value": "MiSTer_test"})
     )
     assert "has no MiSTer_nope.ini" in error(
         await mcp_client.call_tool(
-            "set_ini", {"host": "Office", "key": "recents", "value": 1, "file": "MiSTer_nope.ini"}
+            "mister_set_ini", {"host": "Office", "key": "recents", "value": 1, "file": "MiSTer_nope.ini"}
         )
     )
     assert "isn't a MiSTer ini file name" in error(
-        await mcp_client.call_tool("set_ini", {"host": "Office", "key": "recents", "value": 1, "file": "../etc/passwd"})
+        await mcp_client.call_tool("mister_set_ini", {"host": "Office", "key": "recents", "value": 1, "file": "../etc/passwd"})
     )

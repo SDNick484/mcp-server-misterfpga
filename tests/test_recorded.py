@@ -26,11 +26,11 @@ async def test_recorded_answers_parse(recording, configured):
     office(configured).zaparoo.recorded = json.loads(recording.read_text())
     c = await connect()
     try:
-        status = ok(await c.call_tool("get_status", {"host": "Office"}))["hosts"][0]
+        status = ok(await c.call_tool("mister_get_status", {"host": "Office"}))["hosts"][0]
         assert status["zaparoo"]["connected"] is True and status["library"] is not None
-        systems = ok(await c.call_tool("list_systems", {"host": "Office"}))["systems"]
+        systems = ok(await c.call_tool("mister_list_systems", {"host": "Office"}))["systems"]
         assert systems and all(s["id"] for s in systems)
-        ok(await c.call_tool("search_games", {"query": "a", "host": "Office"}))
-        ok(await c.call_tool("list_nfc", {"host": "Office"}))
+        ok(await c.call_tool("mister_search_games", {"query": "a", "host": "Office"}))
+        ok(await c.call_tool("mister_list_nfc", {"host": "Office"}))
     finally:
         await c.__aexit__(None, None, None)

@@ -74,9 +74,9 @@ def client(url: str, assertion: str | None) -> Client:
 async def test_tools_work_over_http_with_a_valid_assertion(configured):
     async with serving() as url, client(url, token()) as c:
         await wait_until(lambda: all(h.zaparoo.tried.is_set() for h in server.registry().hosts))
-        hosts = ok(await c.call_tool("get_status", {}))["hosts"]
+        hosts = ok(await c.call_tool("mister_get_status", {}))["hosts"]
         assert {h["name"]: h["reachable"] for h in hosts} == {"Office": True, "Family Room": True}
-        body = ok(await c.call_tool("launch", {"game": "Family Room/4812"}))
+        body = ok(await c.call_tool("mister_launch", {"game": "Family Room/4812"}))
         assert body["outcome"] == "done"
     assert family(configured).device.core == "SNES"
 
@@ -100,7 +100,7 @@ async def test_bad_assertions_never_reach_a_mister(configured, assertion):
     playing = mister.device.start_game(super_metroid)
     async with serving() as url, httpx2.AsyncClient() as http:
         headers = {remote.ACCESS_HEADER: assertion} if assertion else {}
-        body = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "return_to_menu"}}
+        body = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "mister_return_to_menu"}}
         resp = await http.post(url, json=body, headers=headers)
         assert (resp.status_code, resp.json()) == (403, {"error": "forbidden"})
     # The game is still running, and no MiSTer was asked to stop it.

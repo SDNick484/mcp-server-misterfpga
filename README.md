@@ -89,22 +89,24 @@ command. To use it from claude.ai or the mobile app too, run it as a service and
 
 ### Tools
 
+All tools are prefixed with `mister_` to eliminate namespace collisions when multiple MCP servers run concurrently in an agent's context. CLI commands support shorthand (e.g., `mcp-server-misterfpga call search_games query=gunstar` or `call status`).
+
 | Tool | Does | Annotations |
 | --- | --- | --- |
-| `get_status` | each MiSTer: model, what's playing, running core, attract mode, library size, free space, capabilities and limitations | read-only |
-| `list_systems` | systems each MiSTer can launch, with game counts and the core that runs each | read-only |
-| `search_games` | find games by name, optionally in one system; each result has a `ref` | read-only |
-| `play_history` | recently played, or most played by total time, from Zaparoo's own records | read-only |
-| `get_ini` | `MiSTer.ini` (or an alternate) parsed into sections, as MiSTer reads it | read-only |
-| `list_nfc` | NFC readers, card mappings, the last card scanned | read-only |
-| `launch` | a game by `ref`, or a system's core with no game; confirmed running; refuses while anything runs | idempotent |
-| `return_to_menu` | end what's running (unsaved progress is lost) | destructive |
-| `screenshot` | what the MiSTer shows, as an image | — |
-| `set_ini` | one `MiSTer.ini` key, global or per core, with a backup first; `dry_run` shows the diff | idempotent |
-| `backup_saves` | saves and save states into a dated snapshot in your backup folder | idempotent |
-| `run_update` | start Update All on the MiSTer's screen (it may reboot); needs `host` and `confirm` | destructive |
-| `write_nfc_card` | write a game onto the card on the reader (overwrites the card) | destructive |
-| `map_nfc_card` | make a card's UID launch a game, without writing to it | idempotent |
+| `mister_get_status` | each MiSTer: model, what's playing, running core, attract mode, library size, free space, capabilities and limitations | read-only |
+| `mister_list_systems` | systems each MiSTer can launch, with game counts and the core that runs each | read-only |
+| `mister_search_games` | find games by name, optionally in one system; each result has a `ref` | read-only |
+| `mister_play_history` | recently played, or most played by total time, from Zaparoo's own records | read-only |
+| `mister_get_ini` | `MiSTer.ini` (or an alternate) parsed into sections, as MiSTer reads it | read-only |
+| `mister_list_nfc` | NFC readers, card mappings, the last card scanned | read-only |
+| `mister_launch` | a game by `ref`, or a system's core with no game; confirmed running; refuses while anything runs | idempotent |
+| `mister_return_to_menu` | end what's running (unsaved progress is lost) | destructive |
+| `mister_take_screenshot` | what the MiSTer shows, as an image | — |
+| `mister_set_ini` | one `MiSTer.ini` key, global or per core, with a backup first; `dry_run` shows the diff | idempotent |
+| `mister_backup_saves` | saves and save states into a dated snapshot in your backup folder (rate-limited) | idempotent |
+| `mister_run_update` | start Update All on the MiSTer's screen (it may reboot); needs `host` and `confirm` | destructive |
+| `mister_write_nfc_card` | write a game onto the card on the reader (overwrites the card) | destructive |
+| `mister_map_nfc_card` | make a card's UID launch a game, without writing to it | idempotent |
 
 A **ref** is `<MiSTer>/<id>`, e.g. `Family Room/4812`: the same game on two MiSTers has two
 refs, and the ref decides which TV it launches on. Actions return
