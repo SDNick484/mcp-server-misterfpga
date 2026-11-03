@@ -153,7 +153,9 @@ async def test_get_ini_reads_sections_and_lists_files(mcp_client):
     body = ok(await mcp_client.call_tool("mister_get_ini", {"host": "Office"}))
     assert body["files"] == ["MiSTer.ini", "MiSTer_crt.ini"]
     assert body["sections"]["arcade_vertical"] == {"vscale_mode": "1"}
-    crt = ok(await mcp_client.call_tool("mister_get_ini", {"host": "Office", "file": "MiSTer_crt.ini", "section": "mister"}))
+    crt = ok(
+        await mcp_client.call_tool("mister_get_ini", {"host": "Office", "file": "MiSTer_crt.ini", "section": "mister"})
+    )
     assert crt["sections"] == {"MiSTer": {"vga_scaler": "0", "composite_sync": "1"}}
 
 
@@ -176,7 +178,9 @@ async def test_set_ini_per_core_writes_a_backup_first(mcp_client, configured):
 @pytest.mark.anyio
 async def test_set_ini_dry_run_and_unchanged_write_nothing(mcp_client, configured):
     before = sd_path(office(configured).device, "/media/fat/MiSTer.ini").read_text()
-    dry = ok(await mcp_client.call_tool("mister_set_ini", {"host": "Office", "key": "recents", "value": 0, "dry_run": True}))
+    dry = ok(
+        await mcp_client.call_tool("mister_set_ini", {"host": "Office", "key": "recents", "value": 0, "dry_run": True})
+    )
     assert dry["outcome"] == "dry_run" and "-recents=1" in dry["diff"] and dry["backup"] is None
     same = ok(await mcp_client.call_tool("mister_set_ini", {"host": "Office", "key": "recents", "value": 1}))
     assert same["outcome"] == "unchanged"
@@ -226,5 +230,7 @@ async def test_set_ini_refusals(mcp_client):
         )
     )
     assert "isn't a MiSTer ini file name" in error(
-        await mcp_client.call_tool("mister_set_ini", {"host": "Office", "key": "recents", "value": 1, "file": "../etc/passwd"})
+        await mcp_client.call_tool(
+            "mister_set_ini", {"host": "Office", "key": "recents", "value": 1, "file": "../etc/passwd"}
+        )
     )

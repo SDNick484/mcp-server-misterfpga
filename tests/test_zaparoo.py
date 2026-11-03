@@ -136,7 +136,9 @@ async def test_one_mister_off_doesnt_hide_the_other(sim, tmp_path, backup_dir):
         assert "search" not in office_status["capabilities"]
         assert any("Update All" in limit for limit in office_status["limitations"])
         # With one MiSTer named, its error is the answer.
-        assert "isn't running on Office" in error(await c.call_tool("mister_search_games", {"query": "x", "host": "Office"}))
+        assert "isn't running on Office" in error(
+            await c.call_tool("mister_search_games", {"query": "x", "host": "Office"})
+        )
         # Without Zaparoo, return_to_menu falls back to MiSTer's own command over SSH (ASSUMPTION M-CMD).
         office(sim).device.start_core("SNES")
         body = ok(await c.call_tool("mister_return_to_menu", {"host": "Office"}))

@@ -546,7 +546,8 @@ async def deliver(track: TrackSettings, outbox: Outbox, client_id: str) -> None:
             outbox.connected = False
             # Events not yet sent go back in front; retained values are resent from outbox.retained anyway.
             outbox.queue.extendleft(reversed([m for m in first if not m[2]]))
-            log.warning("MQTT broker %s: %s; retrying in %.0fs", mask_host_port(f"{track.mqtt_host}:{track.mqtt_port}"), exc, backoff)
+            masked_endpoint = mask_host_port(f"{track.mqtt_host}:{track.mqtt_port}")
+            log.warning("MQTT broker %s: %s; retrying in %.0fs", masked_endpoint, exc, backoff)
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 30.0)
 

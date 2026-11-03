@@ -350,7 +350,9 @@ class MisterHost:
 
     async def launch(self, media_id: int | None, system: str | None) -> Outcome:
         if (media_id is None) == (system is None):
-            raise MisterError("Pass exactly one of game (a ref from mister_search_games) or system (from mister_list_systems).")
+            raise MisterError(
+                "Pass exactly one of game (a ref from mister_search_games) or system (from mister_list_systems)."
+            )
         running = await self.busy()
         if running:
             raise MisterError(

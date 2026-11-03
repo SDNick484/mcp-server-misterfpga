@@ -79,7 +79,8 @@ mcp = MCPServer(
         "In the gaming cabinet signal chain, the MiSTer FPGA acts as the Video and Audio Source feeding "
         "direct HDMI or analog RGB video into the AV Receiver (Onkyo) or TV (LG webOS). "
         "Game launch events trigger dynamic marquee updates on Pixelcade LED displays. "
-        "Play tracking publishes real-time session events to Home Assistant via MQTT ('misterfpga/<host>/now_playing'). "
+        "Play tracking publishes real-time session events to Home Assistant via MQTT "
+        "('misterfpga/<host>/now_playing'). "
         "Call mister_get_status first: it lists each MiSTer by name and model, what it's playing, and its capabilities "
         "and limitations. Find games with mister_search_games or mister_play_history; launch them with "
         "mister_launch(game=<ref>). mister_launch refuses while a game is running: ask before ending one with "
@@ -99,7 +100,10 @@ Host = Annotated[
 ]
 GameRef = Annotated[
     str,
-    Field(description="A game ref from mister_search_games or mister_play_history, e.g. 'Family Room/4812'.", max_length=80),
+    Field(
+        description="A game ref from mister_search_games or mister_play_history, e.g. 'Family Room/4812'.",
+        max_length=80,
+    ),
 ]
 System = Annotated[
     str | None,
@@ -479,7 +483,10 @@ async def mister_list_nfc(host: Host = None) -> NfcInfo:
 async def mister_launch(
     game: Annotated[
         str | None,
-        Field(description="A game ref from mister_search_games or mister_play_history, e.g. 'Family Room/4812'.", max_length=80),
+        Field(
+            description="A game ref from mister_search_games or mister_play_history, e.g. 'Family Room/4812'.",
+            max_length=80,
+        ),
     ] = None,
     system: Annotated[
         str | None,
@@ -639,7 +646,10 @@ async def mister_backup_saves(
 
 @mcp.tool(title="Update the MiSTer", annotations=DESTRUCTIVE)
 async def mister_run_update(
-    host: Annotated[str, Field(description="MiSTer name from mister_get_status. Required: there's no default for this.")],
+    host: Annotated[
+        str,
+        Field(description="MiSTer name from mister_get_status. Required: there's no default for this."),
+    ],
     confirm: Annotated[
         Literal[True], Field(description="Must be true: you've confirmed with the user that it may reboot.")
     ],
@@ -733,7 +743,8 @@ def make_nfc_cards(games: str = "", host: str = "") -> str:
         "cards by UID.\n"
         "2. For each game, call mister_search_games and show me the matches if there's more than one, so I can pick.\n"
         "3. Then, one card at a time: tell me to put a card on the reader (to write) or to tap it (to map), wait "
-        "for me to say it's there, and call mister_write_nfc_card or mister_map_nfc_card. Report each result before the next.\n"
+        "for me to say it's there, and call mister_write_nfc_card or mister_map_nfc_card. "
+        "Report each result before the next.\n"
         "4. At the end, list which card got which game."
     )
 
