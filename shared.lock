@@ -3,5 +3,5 @@
 # `python scripts/sync_shared.py --update`; see that script. An optional
 # `exclude = ["remote"]` names shared modules this repo doesn't take.
 repo = "SDNick484/mcp-server-shared"
-commit = "769702a01a28a175286a7e94ee5d264f635e8c3d"
+commit = "64d70f56732e36d3772e527362484e161aef68b0"
 package = "misterfpga_mcp"
