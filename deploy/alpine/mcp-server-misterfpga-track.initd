@@ -20,6 +20,12 @@ respawn_delay=5
 respawn_max=10
 respawn_period=300
 
+# Stopping: SIGTERM, up to 15 s to shut down cleanly, then SIGKILL (OpenRC's default is SIGTERM/5).
+# Shutdown takes up to about 2 s plus 5 s per MiSTer, one MiSTer at a time: 12 s for two, so with
+# three or more a slow stop can still end in SIGKILL.
+# supervise-daemon reads this at start: the restart that installs it still stops the old way.
+retry="SIGTERM/15/SIGKILL/5"
+
 depend() {
 	need net
 	after firewall
