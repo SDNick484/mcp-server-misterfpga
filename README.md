@@ -15,9 +15,9 @@ A sibling of [mcp-server-harmony](https://github.com/SDNick484/mcp-server-harmon
 [mcp-server-batocera](https://github.com/SDNick484/mcp-server-batocera), with the same
 conventions, and sharing code with them through
 [mcp-server-shared](https://github.com/SDNick484/mcp-server-shared).
-[docs/DESIGN.md](docs/DESIGN.md) is the design, the research behind it, and the decisions.
+[docs/DESIGN.md](https://github.com/SDNick484/mcp-server-misterfpga/blob/main/docs/DESIGN.md) is the design, the research behind it, and the decisions.
 
-**Status:** verified against the simulator only. [HARDWARE_VALIDATION.md](HARDWARE_VALIDATION.md)
+**Status:** verified against the simulator only. [HARDWARE_VALIDATION.md](https://github.com/SDNick484/mcp-server-misterfpga/blob/main/HARDWARE_VALIDATION.md)
 is the checklist for a first session with real MiSTers.
 
 ## Set up your MiSTer
@@ -71,8 +71,16 @@ mcp-server-misterfpga doctor
 ## Install
 
 ```sh
+python -m venv ~/.venvs/misterfpga && . ~/.venvs/misterfpga/bin/activate
+pip install mcp-server-misterfpga
+```
+
+From source instead (for the newest code, or to run the tests):
+
+```sh
 git clone https://github.com/SDNick484/mcp-server-misterfpga.git && cd mcp-server-misterfpga
-python -m venv .venv && . .venv/bin/activate && pip install -e .
+python -m venv .venv && . .venv/bin/activate
+pip install -e ".[dev]" && pytest
 ```
 
 Python 3.11 or newer. Every compiled dependency ships a musl wheel, so Alpine needs no compiler.

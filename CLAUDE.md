@@ -115,6 +115,13 @@ Verified against the simulator only. HARDWARE_VALIDATION.md is the checklist. Ph
 `track` play tracker (DESIGN §10), is built; attract-mode (SAM) detection is not yet: SAM's demo
 games are logged like real play until it is.
 
+## Releases
+
+Version lives only in `src/misterfpga_mcp/__init__.py` (`pyproject.toml` reads it). Bump it and add a
+CHANGELOG.md section for every release: pip treats a same-version install as already satisfied. Pushing
+tag `vX.Y.Z` runs `.github/workflows/release.yml` (PyPI trusted publishing, then a GitHub release).
+CONTRIBUTING.md has the steps and the one-time PyPI setup.
+
 ## Commands
 
 ```sh
