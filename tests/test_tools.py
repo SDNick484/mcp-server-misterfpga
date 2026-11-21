@@ -11,9 +11,10 @@ import base64
 import pytest
 from mcp import Client
 
+from misterfpga_mcp import remote, server
 from misterfpga_mcp.sim.device import MENU
 
-from .conftest import error, family, office, ok
+from .conftest import ASKED, error, family, office, ok
 
 pytestmark = pytest.mark.anyio
 
@@ -42,10 +43,35 @@ READ = {
     "mister_list_nfc",
 }
 DESTRUCTIVE = {"mister_return_to_menu", "mister_run_update", "mister_write_nfc_card"}
+# What each caller may do (remote.tier). Costly: a chore to undo, so a person confirms each call. It is
+# not DESTRUCTIVE: set_ini loses no game progress, but rewrites the MiSTer's config.
+COSTLY = {"mister_return_to_menu", "mister_run_update", "mister_write_nfc_card", "mister_set_ini"}
+EVERYDAY = {"mister_launch", "mister_take_screenshot", "mister_backup_saves", "mister_map_nfc_card"}
 
 
 async def tools(c: Client) -> dict:
     return {t.name: t for t in (await c.list_tools()).tools}
+
+
+# --- tiers ---------------------------------------------------------------------------------
+async def test_every_tool_has_the_tier_its_behavior_calls_for():
+    tiers = {}
+    for listed in await server.mcp.list_tools():
+        tool = server.mcp._tool_manager.get_tool(listed.name)
+        spec = remote.tier_of(tool.fn) if tool else None
+        assert spec is not None, listed.name
+        tiers[listed.name] = spec.tier
+    assert {n for n, t in tiers.items() if t == "read"} == READ
+    assert {n for n, t in tiers.items() if t == "everyday"} == EVERYDAY
+    assert {n for n, t in tiers.items() if t == "costly"} == COSTLY
+    assert set(tiers) == READ | EVERYDAY | COSTLY
+
+
+async def test_a_costly_tool_asks_first_and_an_everyday_one_does_not(mcp_client, configured):
+    ok(await mcp_client.call_tool("mister_launch", {"game": "Family Room/4901"}))
+    assert ASKED == []
+    ok(await mcp_client.call_tool("mister_return_to_menu", {}))
+    assert len(ASKED) == 1 and "Unsaved progress will be lost" in ASKED[0]
 
 
 # --- tools/list ----------------------------------------------------------------------------

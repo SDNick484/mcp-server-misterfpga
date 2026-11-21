@@ -10,7 +10,8 @@ check      first contact with one MiSTer: confirm Zaparoo answers, and with
            and test the login. Saves the MiSTer to config.json.
 call       call one tool exactly as the model would (through an in-process MCP
            client, so arguments are validated the same way) and print the
-           result: `call launch game="Family Room/4812"`; `call tools`.
+           result: `call launch game="Family Room/4812"`; `call tools`. A
+           costly tool asks for a yes on the terminal first.
 doctor     check each MiSTer layer by layer and say what failed (doctor.py);
            --dump writes redacted recordings of its read-only answers.
 track      publish what each MiSTer plays to Home Assistant over MQTT
@@ -134,8 +135,29 @@ async def _cmd_check(args: argparse.Namespace) -> int:
 
 
 # --- call -------------------------------------------------------------------------------------
+async def ask_terminal(context: Any, params: Any) -> Any:
+    """The in-process client's answer to a costly tool's confirmation prompt (remote.tier): ask on the terminal.
+
+    Only a person at a terminal can say yes. Without one (stdin piped or closed, as when a script
+    or a model runs ``call``), the answer is no, so a costly tool never runs unasked.
+    """
+    from mcp.types import ElicitResult
+
+    if not sys.stdin.isatty():
+        print("This tool needs a yes from a person at a terminal; stdin isn't one.", file=sys.stderr)
+        return ElicitResult(action="decline")
+    print(f"{params.message}\nType yes to run it: ", end="", file=sys.stderr, flush=True)
+    answer = await asyncio.to_thread(sys.stdin.readline)
+    if answer.strip().lower() in ("y", "yes"):
+        return ElicitResult(action="accept", content={"confirm": True})
+    return ElicitResult(action="decline")
+
+
 async def _cmd_call(tool: str, raw_args: list[str]) -> int:
-    """One tool call through the real MCP layer, as the model would make it."""
+    """One tool call through the real MCP layer, as the model would make it.
+
+    A costly tool asks first, on the terminal (``ask_terminal``), as Claude Code would.
+    """
     from mcp import Client
 
     from .server import mcp
@@ -150,7 +172,7 @@ async def _cmd_call(tool: str, raw_args: list[str]) -> int:
             tool_args[key] = json.loads(raw)  # limit=5 -> 5, value=null -> None
         except json.JSONDecodeError:
             tool_args[key] = raw  # game=Office/101 -> a string
-    async with Client(mcp) as c:
+    async with Client(mcp, elicitation_callback=ask_terminal) as c:
         if tool == "tools":
             for t in (await c.list_tools()).tools:
                 print(f"{t.name:<24} {(t.description or '').splitlines()[0]}")

@@ -40,6 +40,7 @@ from .host import HostStatus, MisterHost, NowPlaying, Outcome, ref
 from .hosts import HostRegistry
 from .ini import DENIED, KEYS, STRING_MAX
 from .limits import HISTORY_MAX, SEARCH_MAX
+from .remote import request_state_security, tier
 from .tools import ACT, ACT_IDEMPOTENT, DESTRUCTIVE, READ_ONLY
 
 log = logging.getLogger(__name__)
@@ -88,6 +89,7 @@ mcp = MCPServer(
         "which MiSTer (a ref does)."
     ),
     lifespan=lifespan,
+    request_state_security=request_state_security(),
 )
 
 _DESTRUCTIVE_IDEMPOTENT = ToolAnnotations(
@@ -227,6 +229,7 @@ class NfcInfo(TypedDict):
 
 # --- reads ------------------------------------------------------------------------------
 @mcp.tool(title="Get MiSTer status", annotations=READ_ONLY)
+@tier("read")
 async def mister_get_status(host: Host = None) -> Status:
     """
     <use_case>
@@ -269,6 +272,7 @@ async def _gather(
 
 
 @mcp.tool(title="List systems", annotations=READ_ONLY)
+@tier("read")
 async def mister_list_systems(host: Host = None) -> Systems:
     """
     <use_case>
@@ -311,6 +315,7 @@ def _variant(row: dict[str, object]) -> str | None:
 
 
 @mcp.tool(title="Search for games", annotations=READ_ONLY)
+@tier("read")
 async def mister_search_games(
     query: Annotated[str, Field(min_length=1, max_length=100, description="Words in the game's name, e.g. 'metroid'.")],
     system: System = None,
@@ -364,6 +369,7 @@ def _when(stamp: str | None) -> datetime:
 
 
 @mcp.tool(title="Play history", annotations=READ_ONLY)
+@tier("read")
 async def mister_play_history(
     mode: Annotated[
         Literal["recent", "top"],
@@ -412,6 +418,7 @@ async def mister_play_history(
 
 
 @mcp.tool(title="Read MiSTer.ini", annotations=READ_ONLY)
+@tier("read")
 async def mister_get_ini(
     section: Annotated[
         str | None, Field(description="Only this section, e.g. MiSTer or SNES. Omit for all.", max_length=60)
@@ -437,6 +444,7 @@ async def mister_get_ini(
 
 
 @mcp.tool(title="List NFC readers and cards", annotations=READ_ONLY)
+@tier("read")
 async def mister_list_nfc(host: Host = None) -> NfcInfo:
     """
     <use_case>
@@ -480,6 +488,7 @@ async def mister_list_nfc(host: Host = None) -> NfcInfo:
 
 # --- actions ----------------------------------------------------------------------------
 @mcp.tool(title="Launch a game or core", annotations=ACT_IDEMPOTENT)
+@tier("everyday")
 async def mister_launch(
     game: Annotated[
         str | None,
@@ -517,6 +526,10 @@ async def mister_launch(
 
 
 @mcp.tool(title="Return to the MiSTer menu", annotations=_DESTRUCTIVE_IDEMPOTENT)
+@tier(
+    "costly",
+    confirm="End the game running on the MiSTer and return to the menu? Unsaved progress will be lost.",
+)
 async def mister_return_to_menu(host: Host = None) -> Results:
     """
     <use_case>
@@ -539,6 +552,7 @@ async def mister_return_to_menu(host: Host = None) -> Results:
 
 
 @mcp.tool(title="Take a screenshot", annotations=ACT)
+@tier("everyday")
 async def mister_take_screenshot(host: Host = None) -> CallToolResult:
     """
     <use_case>
@@ -564,6 +578,10 @@ async def mister_take_screenshot(host: Host = None) -> CallToolResult:
 
 
 @mcp.tool(title="Change a MiSTer.ini setting", annotations=ACT_IDEMPOTENT)
+@tier(
+    "costly",
+    confirm="Change this setting in the MiSTer's ini file? It takes effect the next time the MiSTer or core loads.",
+)
 async def mister_set_ini(
     key: Annotated[
         str, Field(description="A MiSTer.ini key, e.g. vscale_mode (misterfpga://ini-keys lists them).", max_length=40)
@@ -611,6 +629,7 @@ async def mister_set_ini(
 
 
 @mcp.tool(title="Back up saves", annotations=ACT_IDEMPOTENT)
+@tier("everyday")
 async def mister_backup_saves(
     ctx: Context,
     host: Host = None,
@@ -645,6 +664,11 @@ async def mister_backup_saves(
 
 
 @mcp.tool(title="Update the MiSTer", annotations=DESTRUCTIVE)
+@tier(
+    "costly",
+    confirm="Run Update All on the MiSTer? It updates cores, scripts and the Linux system for several minutes, "
+    "and may reboot the MiSTer.",
+)
 async def mister_run_update(
     host: Annotated[
         str,
@@ -669,6 +693,10 @@ async def mister_run_update(
 
 
 @mcp.tool(title="Write a game to an NFC card", annotations=DESTRUCTIVE)
+@tier(
+    "costly",
+    confirm="Write this game to the NFC card on the reader? Whatever the card holds now is overwritten.",
+)
 async def mister_write_nfc_card(
     game: GameRef,
     reader: Annotated[
@@ -689,6 +717,7 @@ async def mister_write_nfc_card(
 
 
 @mcp.tool(title="Map an NFC card to a game", annotations=ACT_IDEMPOTENT)
+@tier("everyday")
 async def mister_map_nfc_card(
     game: GameRef,
     uid: Annotated[

@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from misterfpga_mcp import cli
 from misterfpga_mcp.cli import normalize
 
 from .conftest import family
@@ -26,7 +27,12 @@ async def run(*args: str, env_dir: Path) -> tuple[int, str, str]:
     assert EXE is not None
     env = {**os.environ, "MISTERFPGA_CONFIG_DIR": str(env_dir)}
     proc = await asyncio.create_subprocess_exec(
-        EXE, *args, env=env, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        EXE,
+        *args,
+        env=env,
+        stdin=asyncio.subprocess.DEVNULL,  # never the terminal pytest runs in: a costly call would wait for it
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
     )
     out, err = await asyncio.wait_for(proc.communicate(), 60)
     assert proc.returncode is not None
@@ -51,6 +57,37 @@ async def test_call_lists_and_calls_tools(configured, tmp_path):
     assert json.loads(out_ns)["results"][0]["ref"] == "Family Room/4901"
     code, _, err = await run("call", "launch", "game=Nowhere/1", env_dir=tmp_path / "config")
     assert code == 1 and "names no configured MiSTer" in err
+
+
+class Terminal:
+    """A stdin that is a terminal, where the person types ``line``."""
+
+    def __init__(self, line: str) -> None:
+        self.line = line
+
+    def isatty(self) -> bool:
+        return True
+
+    def readline(self) -> str:
+        return self.line
+
+
+async def test_call_asks_a_person_at_the_terminal(monkeypatch, capsys):
+    prompt = type("Params", (), {"message": "Run Update All on the MiSTer?"})()
+    monkeypatch.setattr(cli.sys, "stdin", Terminal("yes\n"))
+    answer = await cli.ask_terminal(None, prompt)
+    assert answer.action == "accept" and answer.content == {"confirm": True}
+    assert "Run Update All on the MiSTer?" in capsys.readouterr().err
+    monkeypatch.setattr(cli.sys, "stdin", Terminal("\n"))
+    assert (await cli.ask_terminal(None, prompt)).action == "decline"
+
+
+@needs_exe
+async def test_call_a_costly_tool_without_a_terminal_is_refused(configured, tmp_path):
+    # Only a person at a terminal can confirm; a piped or closed stdin is a no, and nothing runs.
+    code, _, err = await run("call", "run_update", "host=Office", "confirm=true", env_dir=tmp_path / "config")
+    assert code == 1 and "Not confirmed; nothing was done." in err
+    assert family(configured).device.scripts_run == [] and configured.misters[0].device.scripts_run == []
 
 
 @needs_exe
