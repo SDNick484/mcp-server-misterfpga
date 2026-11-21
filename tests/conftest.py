@@ -16,6 +16,7 @@ from typing import Any
 
 import pytest
 from mcp import Client
+from mcp.types import ElicitResult
 
 from misterfpga_mcp import server
 from misterfpga_mcp.sim.harness import SimMister, Simulation
@@ -81,9 +82,28 @@ async def wait_until(check: Callable[[], bool], timeout: float = 5.0) -> None:
         await asyncio.sleep(0.02)
 
 
+# The confirmation prompts costly tools showed (remote.tier), in order. Cleared before each test.
+ASKED: list[str] = []
+
+
+@pytest.fixture(autouse=True)
+def clear_asked() -> None:
+    ASKED.clear()
+
+
+async def say_yes(context: Any, params: Any) -> ElicitResult:
+    """The person's answer to a costly tool's confirmation prompt: yes, recording what they were asked."""
+    ASKED.append(params.message)
+    return ElicitResult(action="accept", content={"confirm": True})
+
+
 async def connect() -> Client:
-    """An in-process MCP client, its server connected to whatever config the test wrote."""
-    c = Client(server.mcp)
+    """An in-process MCP client, its server connected to whatever config the test wrote.
+
+    It answers yes to every confirmation a costly tool asks for (recorded in ``ASKED``), as a person
+    at Claude Code would; test_tools checks which tools ask.
+    """
+    c = Client(server.mcp, elicitation_callback=say_yes)
     await c.__aenter__()
     await wait_until(lambda: all(h.zaparoo.tried.is_set() for h in server.registry().hosts))
     return c

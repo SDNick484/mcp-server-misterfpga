@@ -27,6 +27,8 @@ pytest -q          # expect: all passed, 1 skipped (no recordings yet)
 
 **Tool calls** use `mcp-server-misterfpga call <tool> key=value ...`: the same MCP layer the
 model uses, so arguments are validated the same way. Add `-v` to see the protocol traffic.
+The costly tools (`return_to_menu`, `set_ini`, `run_update`, `write_nfc_card`) print their
+confirmation prompt first: type `yes` to run them. Run `call` in a terminal; with stdin piped it says no.
 
 ---
 

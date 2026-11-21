@@ -43,7 +43,7 @@ software/systems engineer: be technical and concrete, with specific examples.
   `FakeZaparoo.play` / `quit_game` act like the MiSTer's own menu; quitting writes a history
   entry. Used by tests *and* `simulate`
 - Shared with the siblings via mcp-server-shared (pinned by `shared.lock`):
-  `remote.py`, `logsafe.py`, `tasks.py`, `ratelimit.py`, `tests/test_{remote,logsafe,tasks,ratelimit}.py`,
+  `remote.py`, `logsafe.py`, `tasks.py`, `ratelimit.py`, `tests/test_{remote,authorization,logsafe,tasks,ratelimit}.py`,
   `scripts/sync_shared.py`. **Never edit them here**; change mcp-server-shared, then
   `python scripts/sync_shared.py --update`. CI's `shared-drift` job enforces it.
 - `deploy/alpine/`: OpenRC services (user `mcp-mister`): `mcp-server-misterfpga` (MCP over HTTP,
@@ -92,6 +92,9 @@ software/systems engineer: be technical and concrete, with specific examples.
   is allowed on purpose (Zaparoo's tracking setup needs it).
 - Raise `MisterError` (a `ToolError`) for anything the model or user can act on; say what to do.
 - Log to **stderr only**, through `logsafe`. stdout is the MCP stdio transport.
+- Every tool has a `@tier(...)` directly under `@mcp.tool(...)` (shared `remote.py`): `read`, `everyday`, or
+  `costly` with a `confirm=` sentence (a chore to undo: return_to_menu, set_ini, run_update,
+  write_nfc_card). `test_tools.py` pins the sets; `test_authorization.py` fails on an untiered tool.
 - Every tool has a `title`, explicit `ToolAnnotations` (`open_world_hint=False`), and constrained
   args via `Annotated[..., Field(...)]`. `test_tools.py` enforces this. Destructive = can lose
   unsaved progress or a card's contents.

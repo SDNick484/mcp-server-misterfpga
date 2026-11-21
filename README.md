@@ -122,6 +122,14 @@ refs, and the ref decides which TV it launches on. Actions return
 errors that say what to do ("Family Room is running Super Metroid. Call return_to_menu ...",
 "Which MiSTer should open the core? Pass host: Office, Family Room.").
 
+**Costly tools ask a person first.** `mister_return_to_menu`, `mister_set_ini`, `mister_run_update` and
+`mister_write_nfc_card` are a chore to undo (lost progress, a rewritten config, an update that may reboot, an
+overwritten card), so each call shows the person a confirmation prompt and runs only on an explicit yes. Only
+an app that can show the prompt can run them, today the Claude Code CLI; elsewhere they are refused and
+nothing is done. `mcp-server-misterfpga call` asks on the terminal. Every tool has a tier (read, everyday or
+costly; `@tier` in `server.py`), and an automated caller is limited to the tiers in `MCP_AUTOMATION_TIERS`
+(see [Remote access](#remote-access-stdio-or-http-behind-cloudflare-access)), never costly ones.
+
 Resource `misterfpga://ini-keys`: every key `set_ini` accepts, with type and range, and the
 refused ones with the reason. Prompt `make_nfc_cards`: one card at a time, for a list of games.
 
@@ -285,9 +293,13 @@ Cloudflare's edge alone:
   would give anything that can reach the port reboot-capable, root-over-SSH control of your MiSTers. Its
   Host and Origin checks block DNS-rebinding from a browser, not a direct request.
 - **Never expose Zaparoo (7497) or SSH (22) themselves.** Only this server's port goes through the tunnel.
-- What a caller can do is the same over HTTP as over stdio: the [limits below](#what-the-model-cant-do)
-  are in the tools, not the transport. `run_update` still needs `host` and `confirm`, and is rate-limited
-  to once an hour per MiSTer.
+- The [limits below](#what-the-model-cant-do) are in the tools, not the transport. `run_update` still needs
+  `host` and `confirm`, and is rate-limited to once an hour per MiSTer.
+- **Who may do what** (shared `remote.py`): a person (an Access login with an email) may use every tool,
+  confirming each costly one; so may this machine (stdio, or HTTP without Access). An **Access service
+  token is refused (403) unless its client ID is in `MCP_ALLOWED_SERVICE_TOKENS`**, and then may use only
+  the tiers in `MCP_AUTOMATION_TIERS` (default `read,power-off`; this server has no power-off tools, so
+  that is the read tools; add `everyday` for launches and the like). Costly tools are never open to it.
 
 ### Service and Cloudflare
 
@@ -302,7 +314,7 @@ sh deploy/alpine/install.sh        # prints the next steps: key, ssh-copy-id, ch
 
 The service runs `/opt/mcp-server-misterfpga/run.sh` (`serve --http`) under `supervise-daemon` (restarted
 if it exits) as `mcp-mister`, logging to `/var/log/mcp-server-misterfpga/server.log`. Its settings are the
-`MCP_HTTP_*`, `MCP_PUBLIC_HOSTS` and `CF_ACCESS_*` lines in the env file:
+`MCP_HTTP_*`, `MCP_PUBLIC_HOSTS`, `CF_ACCESS_*` and `MCP_ALLOWED_*` lines in the env file:
 
 | Flag | Variable | Default |
 | --- | --- | --- |
@@ -312,6 +324,8 @@ if it exits) as `mcp-mister`, logging to `/var/log/mcp-server-misterfpga/server.
 | `--public-host` | `MCP_PUBLIC_HOSTS` | none: only loopback Host headers pass |
 | | `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD` | none: serves only this machine |
 | | `MCP_ALLOWED_EMAILS` | anyone Access lets in (set it) |
+| | `MCP_ALLOWED_SERVICE_TOKENS` | none: every Access service token gets 403 (comma-separated client IDs, e.g. `token-1.access`) |
+| | `MCP_AUTOMATION_TIERS` | `read,power-off`: what an admitted service token may use (may add `everyday`; never `costly`) |
 
 To use it as a connector, with cloudflared running on the same machine (keep the `127.0.0.1` bind):
 
