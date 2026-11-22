@@ -48,6 +48,15 @@ rc-service mcp-server-misterfpga start
 for _ in $(seq 50); do curl -fsS http://127.0.0.1:8716/healthz && break; sleep 0.2; done
 rc-service mcp-server-misterfpga status
 
+STEP='running commit'
+# Installed from a checkout, so install.sh stamped its HEAD, and both health routes report it:
+# the one under the MCP path is the one a tunnel reaches.
+commit=$(git -c safe.directory=/src -C /src rev-parse HEAD)
+[ "$(sed -n 1p /opt/mcp-server-misterfpga/COMMIT)" = "$commit" ]
+[ "$(stat -c '%a %U' /opt/mcp-server-misterfpga/COMMIT)" = "644 root" ]
+curl -fsS http://127.0.0.1:8716/misterfpga/mcp/healthz | grep -q "\"commit\": \"$commit\""
+curl -fsS http://127.0.0.1:8716/healthz | grep -q '"repo": "SDNick484/mcp-server-misterfpga"'
+
 STEP='service user'
 # shellcheck disable=SC2009
 pid=$(ps -o pid,args | grep '[m]cp-server-misterfpga serve' | awk 'NR==1 {print $1}')
