@@ -337,7 +337,9 @@ To use it as a connector, with cloudflared running on the same machine (keep the
    `CF_ACCESS_AUD=<the AUD tag>`, `MCP_ALLOWED_EMAILS=<you>`, then `rc-service mcp-server-misterfpga restart`.
 4. **The connector:** `https://mcp.example.com/misterfpga/mcp`.
 
-`GET /healthz` answers without auth, for monitoring. Details are in `src/misterfpga_mcp/remote.py`. CI runs
+`GET /healthz` and `GET /misterfpga/mcp/healthz` (the one a tunnel that routes only `misterfpga/*`
+reaches) answer without auth, for monitoring, with the commit the install script stamped (`"commit"`,
+`"repo"`; from `/opt/mcp-server-misterfpga/COMMIT`). Details are in `src/misterfpga_mcp/remote.py`. CI runs
 `deploy/alpine/smoke-test.sh` in a stock `python:3.12-alpine` container: install, the test suite on musl,
 the OpenRC service as its user, an MCP call over HTTP against the simulator, and the Access settings from
 the env file turning the Access check on.
