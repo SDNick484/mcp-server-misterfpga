@@ -41,7 +41,7 @@ from .hosts import HostRegistry
 from .ini import DENIED, KEYS, STRING_MAX
 from .limits import HISTORY_MAX, SEARCH_MAX
 from .remote import request_state_security, tier
-from .tools import ACT, ACT_IDEMPOTENT, DESTRUCTIVE, READ_ONLY
+from .tools import ACT, ACT_IDEMPOTENT, DESTRUCTIVE, READ_ONLY, trim_tools
 
 log = logging.getLogger(__name__)
 
@@ -739,6 +739,10 @@ async def mister_map_nfc_card(
     """
     h, media_id = (await ready()).game(game, None)
     return await h.map_card(media_id, uid)
+
+
+# Every tool is registered by now: shorten what tools/list sends (see tools.py).
+trim_tools(mcp)
 
 
 # --- resources --------------------------------------------------------------------------
